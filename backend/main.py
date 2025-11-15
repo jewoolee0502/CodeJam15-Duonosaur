@@ -3,12 +3,14 @@ from dotenv import load_dotenv
 
 from dino import router as dino_router
 from mole import router as mole_router
+from teach import router as teach_router
 
 load_dotenv()
 
 app = FastAPI()
 app.include_router(dino_router)
 app.include_router(mole_router)
+app.include_router(teach_router)
 
 @app.get("/")
 async def root():

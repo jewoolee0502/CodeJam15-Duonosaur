@@ -1,6 +1,6 @@
 import { Gamepad2, Settings, HelpCircle, ArrowUp, Hammer, X, Volume2, VolumeX, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
-import dinoImage from 'figma:asset/3a519b4fad679bec0e5a1851cb49a7ecc7330095.png';
+import dinoImage from '../assets/dinosaur_reading.gif';
 
 interface StartMenuProps {
   onSelectGame: (game: 'whack-a-mole' | 'jump' | 'dunolingo' | 'chat-learning') => void;
@@ -30,11 +30,14 @@ export function StartMenu({ onSelectGame }: StartMenuProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8 overflow-y-auto">
         {/* Dinosaur Character */}
-        <div className="mb-4 rounded-3xl p-4" style={{ backgroundColor: '#F5E5C7' }}>
+        <div className="mb-4" style={{ backgroundColor: 'transparent' }}>
           <img 
             src={dinoImage} 
             alt="Dinosaur mascot"
             className="w-32 h-32 sm:w-40 sm:h-40 object-contain"
+            style={{ 
+              backgroundColor: 'transparent'
+            }}
           />
         </div>
 
@@ -115,7 +118,7 @@ export function StartMenu({ onSelectGame }: StartMenuProps) {
       {/* Footer */}
       <div className="relative pb-4">
         <p className="text-center text-xs tracking-widest" style={{ color: '#B8621B' }}>
-          TEAM • WONDER OF YOU
+          TEAM • DUONOSAUR
         </p>
       </div>
 

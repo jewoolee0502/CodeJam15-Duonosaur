@@ -7,7 +7,7 @@ import {
   Mic,
   MicOff,
 } from "lucide-react";
-import dinoImage from "figma:asset/3a519b4fad679bec0e5a1851cb49a7ecc7330095.png";
+import dinoImage from "../assets/dinosaur_running_improved.gif";
 
 interface DunolingoGameProps {
   onBack: () => void;
@@ -505,7 +505,7 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
                   className="text-2xl mb-2"
                   style={{ color: "#B8621B" }}
                 >
-                  Dunolingo
+                  Dinolingo
                 </h2>
                 <p
                   className="text-sm mb-4"

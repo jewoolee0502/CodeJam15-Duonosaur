@@ -7,7 +7,7 @@ import {
   Mic,
   MicOff,
 } from "lucide-react";
-import dinoImage from "figma:asset/3a519b4fad679bec0e5a1851cb49a7ecc7330095.png";
+import dinoImage from "../assets/dinosaur_running_improved.gif";
 
 interface DunolingoGameProps {
   onBack: () => void;
@@ -42,8 +42,19 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const gameLoopRef = useRef<number>();
   const canvasRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const lastJumpedWordRef = useRef<string>(''); // Track last word that triggered jump to prevent duplicate jumps
+  const shouldBeListeningRef = useRef(false); // Track if we want to be listening
+  const isStartingRef = useRef(false); // Track if we're currently trying to start
+  const pendingCorrectWordRef = useRef(false); // Track if we detected correct word but haven't jumped yet
+  const hasJumpedForCurrentObstacleRef = useRef(false); // Track if we've already jumped for the current obstacle
+  const gameStateRef = useRef<GameState>(gameState); // Track game state for use in speech recognition handler
+  
+  // Keep gameStateRef in sync with gameState
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
-  const GRAVITY = 0.6;
+  const GRAVITY = 0.45;
   const JUMP_STRENGTH = -12;
   const DINO_SIZE = 50;
   const GROUND_HEIGHT = 20;
@@ -57,6 +68,33 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const correctWords = ["ordinateur", "computer"];
   const wrongWords = ["clavier", "keyboard"];
 
+  const createObstacle = () => {
+    const obstacleType = Math.random();
+    let width, height;
+
+    if (obstacleType < 0.3) {
+      width = 20;
+      height = 50;
+    } else if (obstacleType < 0.6) {
+      width = 30;
+      height = 40;
+    } else {
+      width = 40;
+      height = 30;
+    }
+
+    // Spawn obstacles 500px away from the dinosaur
+    // Dinosaur is at DINO_X (100), so obstacles start at 100 + 500 = 600px
+    const spawnDistance = DINO_X + 300; // 600px from left edge
+
+    return {
+      x: spawnDistance,
+      width,
+      height,
+      passed: false,
+    };
+  };
+
   const startGame = () => {
     setGameState("playing");
     setScore(0);
@@ -65,14 +103,9 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
     velocityRef.current = 0;
     setGameSpeed(3);
     setWordState("neutral");
-    setObstacles([
-      {
-        x: GAME_WIDTH + 200,
-        width: 20,
-        height: 40,
-        passed: false,
-      },
-    ]);
+    pendingCorrectWordRef.current = false;
+    hasJumpedForCurrentObstacleRef.current = false;
+    setObstacles([]);
   };
 
   const jump = () => {
@@ -103,65 +136,166 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = "fr-FR";
-      recognitionRef.current.maxAlternatives = 3;
+      recognitionRef.current.maxAlternatives = 1; // Reduce to 1 for faster processing
+
+      // Pre-compute normalized answers for faster matching
+      const correctAnswerLower = correctAnswer.toLowerCase().trim();
+      const wrongAnswerLower = wrongAnswer.toLowerCase().trim();
+      const correctAnswerMinLength = Math.max(3, Math.floor(correctAnswerLower.length * 0.6)); // Check when 60% of word is spoken
 
       recognitionRef.current.onresult = (event: any) => {
-        const current = event.resultIndex;
-        const result = event.results[current][0];
-        const transcript = result.transcript
-          .toLowerCase()
-          .trim();
+        // Process all results immediately, prioritizing speed
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i][0];
+          const isFinal = event.results[i].isFinal;
+          
+          // Extremely low confidence threshold for fastest detection - accept any result
+          const confidenceThreshold = isFinal ? 0.01 : 0.0;
+          
+          if (result.confidence > confidenceThreshold) {
+            // Fast normalization - minimal processing
+            const transcript = result.transcript
+              .toLowerCase()
+              .replace(/[.,!?;:\s]+/g, ' ') // Remove punctuation and normalize spaces in one pass
+              .trim();
+            
+            setSpokenText(transcript);
+            console.log("You said:", transcript, isFinal ? "(final)" : "(interim)", "confidence:", result.confidence);
 
-        if (result.confidence > 0.3) {
-          setSpokenText(transcript);
-          console.log("You said:", transcript);
-
-          if (
-            correctWords.some((word) =>
-              transcript.includes(word),
-            )
-          ) {
-            setWordState("correct");
-            setVoiceFeedback("✓ Correct!");
-            jump();
-            setTimeout(() => {
-              setVoiceFeedback("");
-              setWordState("neutral");
-            }, 1500);
-          } else if (
-            wrongWords.some((word) => transcript.includes(word))
-          ) {
-            setWordState("wrong");
-            setVoiceFeedback("✗ Wrong word!");
-            setTimeout(() => {
-              setVoiceFeedback("");
-              setWordState("neutral");
-            }, 1500);
+            // Fast word extraction
+            const words = transcript.split(/\s+/).filter(w => w.length > 0);
+            
+            // Generate obstacle when any word is detected (only on final results to avoid duplicates)
+            if (isFinal && words.length > 0 && gameStateRef.current === "playing") {
+              // Create a new obstacle when a word is detected - no limit, infinite obstacles
+              setObstacles((prev) => {
+                return [...prev, createObstacle()];
+              });
+            }
+            
+            // Check for exact match first (fastest path)
+            let matchedWord = null;
+            for (const word of words) {
+              if (word === correctAnswerLower) {
+                matchedWord = word;
+                break;
+              }
+            }
+            
+            // If exact match found, mark as pending and wait for optimal jump timing
+            if (matchedWord && matchedWord !== lastJumpedWordRef.current) {
+              lastJumpedWordRef.current = matchedWord;
+              
+              // Set pending flag - jump will happen when obstacle is near
+              pendingCorrectWordRef.current = true;
+              hasJumpedForCurrentObstacleRef.current = false;
+              
+              requestAnimationFrame(() => {
+                setWordState("correct");
+                // setVoiceFeedback("✓ Correct! Waiting for obstacle...");
+              });
+              
+              // Skip processing other words once we found a match
+              continue;
+            }
+            
+            // Check for partial match on interim results for even faster detection
+            if (!isFinal && words.length > 0) {
+              const lastWord = words[words.length - 1];
+              // Check if the last word is a prefix of the correct answer (user is still speaking)
+              // This allows jumping when ~60% of the word is detected
+              if (lastWord.length >= correctAnswerMinLength && 
+                  correctAnswerLower.startsWith(lastWord) &&
+                  lastWord !== lastJumpedWordRef.current) {
+                // Very likely the correct word is being spoken - mark as pending
+                lastJumpedWordRef.current = lastWord;
+                
+                // Set pending flag - jump will happen when obstacle is near
+                pendingCorrectWordRef.current = true;
+                hasJumpedForCurrentObstacleRef.current = false;
+                
+                requestAnimationFrame(() => {
+                  setWordState("correct");
+                  // setVoiceFeedback("✓ Correct! Waiting for obstacle...");
+                });
+                
+                continue;
+              }
+            }
+            
+            // Check for wrong answer only on final results
+            if (isFinal) {
+              const hasWrongAnswer = words.some(word => word === wrongAnswerLower);
+              if (hasWrongAnswer) {
+                setWordState("wrong");
+                // setVoiceFeedback("✗ Wrong word!");
+                setTimeout(() => {
+                  setVoiceFeedback("");
+                  setWordState("neutral");
+                }, 1000);
+              }
+            }
           }
         }
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
+        isStartingRef.current = false; // Reset starting flag
+        
         if (event.error === "no-speech") {
-          recognitionRef.current.stop();
-          setTimeout(
-            () => isListening && recognitionRef.current.start(),
-            100,
-          );
-        } else {
+          // No speech detected - this is normal, let onend handle restart
+          return;
+        } else if (event.error === "aborted") {
+          // User stopped - this is fine
+          return;
+        } else if (event.error === "not-allowed") {
           setIsListening(false);
-          setVoiceFeedback("Error - try again");
-          setTimeout(() => setVoiceFeedback(""), 1500);
+          shouldBeListeningRef.current = false;
+          setVoiceFeedback("Microphone permission denied");
+          setTimeout(() => setVoiceFeedback(""), 2000);
+        } else {
+          // Other errors - try to restart if we should be listening
+          setIsListening(false);
+          setVoiceFeedback("Error - retrying...");
+          setTimeout(() => {
+            if (shouldBeListeningRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                console.error("Failed to restart after error:", e);
+                setVoiceFeedback("Error - try clicking Start Listening again");
+                setTimeout(() => setVoiceFeedback(""), 2000);
+              }
+            }
+          }, 500);
         }
       };
 
       recognitionRef.current.onend = () => {
-        if (isListening && gameState === "playing") {
-          setTimeout(() => recognitionRef.current.start(), 100);
+        isStartingRef.current = false; // Reset starting flag
+        
+        // Auto-restart if we should still be listening
+        if (shouldBeListeningRef.current && recognitionRef.current) {
+          setTimeout(() => {
+            if (shouldBeListeningRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                // Recognition might already be starting or stopped
+                console.log("Recognition restart skipped:", e);
+              }
+            }
+          }, 100);
         } else {
           setIsListening(false);
         }
+      };
+
+      recognitionRef.current.onstart = () => {
+        isStartingRef.current = false;
+        setIsListening(true);
+        setVoiceFeedback(""); // No message when listening starts
       };
 
       recognitionRef.current.onaudiostart = () =>
@@ -178,20 +312,65 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   }, [isListening, gameState]);
 
   const startListening = () => {
-    if (recognitionRef.current && gameState === "playing") {
+    if (!recognitionRef.current) {
+      setVoiceFeedback("Speech recognition not available");
+      setTimeout(() => setVoiceFeedback(""), 2000);
+      return;
+    }
+
+    // Prevent multiple simultaneous start attempts
+    if (isStartingRef.current || isListening) {
+      console.log("Already starting or listening");
+      return;
+    }
+
+    try {
+      shouldBeListeningRef.current = true;
+      isStartingRef.current = true;
       setSpokenText("");
-      setVoiceFeedback("Listening...");
+      setVoiceFeedback(""); // No message when starting
       setIsListening(true);
+      
       recognitionRef.current.start();
+    } catch (err: any) {
+      isStartingRef.current = false;
+      console.error("Error starting recognition:", err);
+      
+      if (err.message?.includes('already started') || err.name === 'InvalidStateError') {
+        // Already started - this is fine, just update state
+        shouldBeListeningRef.current = true;
+        setIsListening(true);
+        setVoiceFeedback(""); // No message when already started
+      } else {
+        shouldBeListeningRef.current = false;
+        setIsListening(false);
+        setVoiceFeedback("Failed to start - try again");
+        setTimeout(() => setVoiceFeedback(""), 2000);
+      }
     }
   };
 
   const stopListening = () => {
+    shouldBeListeningRef.current = false;
+    isStartingRef.current = false;
+    
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recognition:", e);
+      }
     }
+    setIsListening(false);
+    setVoiceFeedback("");
   };
+
+  // Stop microphone immediately when game is over
+  useEffect(() => {
+    if (gameState === "gameOver") {
+      stopListening();
+    }
+  }, [gameState]);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -233,6 +412,43 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
         }));
         let newScore = score;
 
+        // Find the nearest unpased obstacle
+        const nearestObstacle = newObstacles
+          .filter(obs => !obs.passed)
+          .sort((a, b) => a.x - b.x)[0];
+
+        // Check if we have a pending correct word and should jump
+        if (pendingCorrectWordRef.current && nearestObstacle && !hasJumpedForCurrentObstacleRef.current && dinoY === 0) {
+          const dinoRight = DINO_X + DINO_SIZE;
+          const obsLeft = nearestObstacle.x;
+          const distanceToObstacle = obsLeft - dinoRight;
+          
+          // Optimal jump distance: when obstacle is 20-50 pixels away
+          // Jump closer for more exciting gameplay
+          const maxJumpDistance = 50;
+          const minJumpDistance = 20;
+          
+          if (distanceToObstacle <= maxJumpDistance && distanceToObstacle >= minJumpDistance) {
+            // Trigger jump at optimal timing (close to obstacle)
+            hasJumpedForCurrentObstacleRef.current = true;
+            jump();
+            setVoiceFeedback("✓ Jumping!");
+          } else if (distanceToObstacle < minJumpDistance && distanceToObstacle > 0) {
+            // Very close but still ahead - jump immediately to avoid collision
+            hasJumpedForCurrentObstacleRef.current = true;
+            jump();
+            setVoiceFeedback("✓ Jumping!");
+          } else if (distanceToObstacle < 0) {
+            // Obstacle already passed - reset state (word detected too late)
+            pendingCorrectWordRef.current = false;
+            hasJumpedForCurrentObstacleRef.current = false;
+            lastJumpedWordRef.current = '';
+            setWordState("neutral");
+            setVoiceFeedback("Too late - obstacle passed");
+            setTimeout(() => setVoiceFeedback(""), 1500);
+          }
+        }
+
         newObstacles.forEach((obs) => {
           const dinoLeft = DINO_X;
           const dinoRight = DINO_X + DINO_SIZE;
@@ -250,6 +466,15 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
           if (!obs.passed && dinoRight > obsRight) {
             obs.passed = true;
             newScore++;
+            
+            // Reset pending state after successfully passing obstacle
+            if (pendingCorrectWordRef.current && hasJumpedForCurrentObstacleRef.current) {
+              pendingCorrectWordRef.current = false;
+              hasJumpedForCurrentObstacleRef.current = false;
+              lastJumpedWordRef.current = '';
+              setWordState("neutral");
+              setVoiceFeedback("");
+            }
           }
 
           if (dinoRight > obsLeft && dinoLeft < obsRight) {
@@ -273,42 +498,8 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
           (obs) => obs.x > -obs.width,
         );
 
-        if (
-          newObstacles.length === 0 ||
-          newObstacles[newObstacles.length - 1].x <
-            GAME_WIDTH - 300
-        ) {
-          const minGap = 250;
-          const maxGap = 400;
-          const gap =
-            Math.random() * (maxGap - minGap) + minGap;
-
-          const lastObsX =
-            newObstacles.length > 0
-              ? newObstacles[newObstacles.length - 1].x
-              : GAME_WIDTH;
-
-          const obstacleType = Math.random();
-          let width, height;
-
-          if (obstacleType < 0.3) {
-            width = 20;
-            height = 50;
-          } else if (obstacleType < 0.6) {
-            width = 30;
-            height = 40;
-          } else {
-            width = 40;
-            height = 30;
-          }
-
-          newObstacles.push({
-            x: lastObsX + gap,
-            width,
-            height,
-            passed: false,
-          });
-        }
+        // Obstacles are now generated when words are detected by the microphone
+        // (see recognitionRef.current.onresult handler)
 
         return newObstacles;
       });
@@ -505,13 +696,13 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
                   className="text-2xl mb-2"
                   style={{ color: "#B8621B" }}
                 >
-                  Dunolingo
+                  Dinolingo
                 </h2>
                 <p
                   className="text-sm mb-4"
                   style={{ color: "#8B6F47" }}
                 >
-                  Press Space or click to jump over obstacles
+                  Say the correct word to jump over obstacles
                 </p>
                 <button
                   onClick={startGame}
@@ -625,9 +816,9 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
         <div className="mt-4 text-center">
           <p className="text-sm" style={{ color: "#8B6F47" }}>
             {gameState === "ready" &&
-              "Click or press Space to start"}
+              "Turn on your mic to jump"}
             {gameState === "playing" &&
-              "Space or Click to jump • P to pause"}
+              "Speak the correct word to jump"}
             {gameState === "paused" &&
               "Press P or click Resume to continue"}
             {gameState === "gameOver" &&

@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Hole } from './Hole';
 
-interface Exercise {
-  sentence: string;
-  mistake: string;
-  words?: string[];
-}
+interface MoleExcercise {
+    exercise: string,
+    words: string[],
+    answer: string,
+    explanation: string
+  }
 
 interface GameBoardProps {
   isPlaying: boolean;
   onWhack: (hit: boolean) => void;
-  exercises: Exercise[];
+  exercises: MoleExcercise[];
   currentExerciseIndex: number;
   onAdvanceExercise: (correct: boolean) => void;
 }
@@ -31,7 +32,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
   const words = currentExercise
     ? (currentExercise.words && currentExercise.words.length > 0
         ? currentExercise.words
-        : currentExercise.sentence.split(/\s+/))
+        : currentExercise.exercise.split(/\s+/))
     : [];
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       }
 
       // Weighted selection: make the exercise mistake ~30% more likely to be chosen
-      const targetNorm = normalize(currentExercise?.mistake);
+      const targetNorm = normalize(currentExercise?.answer);
       let totalWeight = 0;
       const weights = availableWords.map(w => {
         const wNorm = normalize(w);
@@ -153,8 +154,8 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       (s || '').replace(/[^0-9A-Za-zÀ-ž']/g, '').toLowerCase();
 
     const clicked = normalize(word);
-    const target = normalize(currentExercise?.mistake);
-    console.debug('GameBoard: clicked=', word, 'clickedNorm=', clicked, 'target=', currentExercise?.mistake, 'targetNorm=', target);
+    const target = normalize(currentExercise?.answer);
+    console.debug('GameBoard: clicked=', word, 'clickedNorm=', clicked, 'target=', currentExercise?.answer, 'targetNorm=', target);
 
     if (clicked && target && clicked === target) {
       // Correct: advance the exercise and let parent increment the score
@@ -183,7 +184,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       onClick={handleMissClick}
     >
       <div className="text-center mb-6 text-2xl font-semibold" style={{ color: '#6B5335' }}>
-        {currentExercise?.sentence}
+        {currentExercise?.exercise}
       </div>
 
       <div className="grid grid-cols-3 gap-6">

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Hole } from './Hole';
 
 interface Exercise {
   sentence: string;
   mistake: string;
+  words?: string[];
 }
 
 interface GameBoardProps {
@@ -19,8 +20,19 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
   const [hitWords, setHitWords] = useState<Set<string>>(new Set());
   const [wordHoleMap, setWordHoleMap] = useState<Map<string, number>>(new Map());
   const holes = Array.from({ length: 9 }, (_, i) => i);
+  const hideTimeoutRef = useRef<number | null>(null);
+  const popTimeoutRef = useRef<number | null>(null);
   const currentExercise = exercises[currentExerciseIndex];
-  const words = currentExercise?.sentence ? currentExercise.sentence.split(' ') : [];
+  // Helper to normalize words for comparison (removes punctuation, lowercases)
+  const normalize = (s?: string) =>
+    (s || '').replace(/[^0-9A-Za-zÀ-ž']/g, '').toLowerCase();
+  // Prefer an explicit words array on the exercise (better tokenization),
+  // otherwise fall back to splitting the sentence by whitespace.
+  const words = currentExercise
+    ? (currentExercise.words && currentExercise.words.length > 0
+        ? currentExercise.words
+        : currentExercise.sentence.split(/\s+/))
+    : [];
 
   useEffect(() => {
     setHitWords(new Set());
@@ -45,7 +57,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       map.set(words[i], holePool[i]);
     }
     setWordHoleMap(map);
-  }, [currentExerciseIndex]);
+  }, [currentExerciseIndex, words]);
 
   useEffect(() => {
     if (!isPlaying) {
@@ -53,30 +65,82 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       return;
     }
 
-    const popUpMoles = () => {
-      const availableWords = words.filter(w => !hitWords.has(w));
-      if (availableWords.length === 0) return;
+    // Use a single sequential pop scheduler so moles are never synchronized
+    const schedulePop = () => {
+      // If game stopped, don't schedule
+      if (!isPlaying) return;
 
-      const newActiveMoles = new Map<number, string>();
-      // Use the fixed mapping from word to hole so words don't move between cycles
-      for (const w of availableWords) {
-        const holeIndex = wordHoleMap.get(w);
-        if (holeIndex !== undefined) {
-          newActiveMoles.set(holeIndex, w);
+      const availableWords = words.filter(w => !hitWords.has(w));
+      if (availableWords.length === 0) {
+        // nothing left; try again later
+        popTimeoutRef.current = window.setTimeout(schedulePop, 2000);
+        return;
+      }
+
+      // Weighted selection: make the exercise mistake ~30% more likely to be chosen
+      const targetNorm = normalize(currentExercise?.mistake);
+      let totalWeight = 0;
+      const weights = availableWords.map(w => {
+        const wNorm = normalize(w);
+        const weight = (targetNorm && wNorm === targetNorm) ? 1.3 : 1.0;
+        totalWeight += weight;
+        return weight;
+      });
+
+      let r = Math.random() * totalWeight;
+      let chosenIndex = 0;
+      for (let i = 0; i < availableWords.length; i++) {
+        r -= weights[i];
+        if (r <= 0) {
+          chosenIndex = i;
+          break;
         }
       }
 
-      setActiveMoles(newActiveMoles);
-      const hideTime = 1200 + Math.random() * 400;
-      setTimeout(() => setActiveMoles(new Map()), hideTime);
+      const word = availableWords[chosenIndex];
+      const holeIndex = wordHoleMap.get(word);
+      if (holeIndex === undefined) {
+        popTimeoutRef.current = window.setTimeout(schedulePop, 1000);
+        return;
+      }
+
+      setActiveMoles(new Map([[holeIndex, word]]));
+
+      // Make mole visible much longer so gameplay is slower
+      const hideTime = 3000 + Math.random() * 1000; // 4000-5000ms
+
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      hideTimeoutRef.current = window.setTimeout(() => {
+        setActiveMoles(new Map());
+        hideTimeoutRef.current = null;
+
+        // schedule next pop after a small randomized gap so pops are not synchronized
+        const gap = 800 + Math.random() * 1200; // 800-3000ms
+        popTimeoutRef.current = window.setTimeout(schedulePop, gap);
+      }, hideTime);
     };
 
-    const interval = setInterval(() => {
-      popUpMoles();
-    }, 1800 + Math.random() * 800);
-    popUpMoles();
-    return () => clearInterval(interval);
-  }, [isPlaying, words, hitWords]);
+    // start the initial pop cycle (randomized initial delay)
+    if (popTimeoutRef.current) {
+      clearTimeout(popTimeoutRef.current);
+      popTimeoutRef.current = null;
+    }
+    popTimeoutRef.current = window.setTimeout(schedulePop, 600 + Math.random() * 1000);
+
+    return () => {
+      if (popTimeoutRef.current) {
+        clearTimeout(popTimeoutRef.current);
+        popTimeoutRef.current = null;
+      }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+    };
+  }, [isPlaying, words, hitWords, wordHoleMap]);
 
   const handleMoleClick = (holeIndex: number) => {
     const word = activeMoles.get(holeIndex);
@@ -85,9 +149,22 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
     setActiveMoles(new Map());
     setHitWords((prev: Set<string>) => new Set([...Array.from(prev), word]));
 
-    if (word === currentExercise.mistake) {
+    const normalize = (s: string | undefined) =>
+      (s || '').replace(/[^0-9A-Za-zÀ-ž']/g, '').toLowerCase();
+
+    const clicked = normalize(word);
+    const target = normalize(currentExercise?.mistake);
+    console.debug('GameBoard: clicked=', word, 'clickedNorm=', clicked, 'target=', currentExercise?.mistake, 'targetNorm=', target);
+
+    if (clicked && target && clicked === target) {
+      // Correct: advance the exercise and let parent increment the score
+      console.debug('GameBoard: MATCH -> onAdvanceExercise(true)');
+      // Notify parent this was a successful whack (score increment) and then advance
+      onWhack(true);
       onAdvanceExercise(true);
     } else {
+      // Incorrect: count as a missed click and advance the exercise
+      console.debug('GameBoard: MISS -> onWhack(false) + onAdvanceExercise(false)');
       onWhack(false);
       onAdvanceExercise(false);
     }

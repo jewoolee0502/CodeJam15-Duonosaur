@@ -5,9 +5,10 @@ interface HoleProps {
   isActive: boolean;
   onClick: () => void;
   isPlaying: boolean;
+  word?: string;
 }
 
-export function Hole({ isActive, onClick, isPlaying }: HoleProps) {
+export function Hole({ isActive, onClick, isPlaying, word }: HoleProps) {
   return (
     // ALIGNMENT: Centered content with relative positioning
     <div className="relative flex items-end justify-center h-28 overflow-hidden">
@@ -29,30 +30,34 @@ export function Hole({ isActive, onClick, isPlaying }: HoleProps) {
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
             className="absolute bottom-0 z-10"
           >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClick();
-              }}
-              disabled={!isPlaying}
-              className="relative group disabled:cursor-default"
-              aria-label="Whack mole"
-            >
-              {/* REPETITION: Consistent sizing for all moles */}
-              {/* CONTRAST: Dinosaur character as the target */}
-              <div className="w-24 h-24 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <img 
-                  src={dinoImage} 
-                  alt="Dinosaur"
-                  className="w-full h-full object-contain"
-                  style={{
-                    backgroundColor: 'transparent'
-                  }}
-                />
-              </div>
-              {/* CONTRAST: Hit effect with bright color */}
-              <div className="absolute inset-0 rounded-full opacity-0 group-active:opacity-60 transition-opacity pointer-events-none" style={{ backgroundColor: '#FFD7B5' }}></div>
-            </button>
+            <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 1.2, repeat: Infinity }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                disabled={!isPlaying}
+                className="relative group disabled:cursor-default"
+                aria-label="Whack mole"
+              >
+                <div className="w-24 h-24 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <img 
+                    src={dinoImage} 
+                    alt="Dinosaur"
+                    className="w-full h-full object-contain"
+                    style={{
+                      backgroundColor: 'transparent'
+                    }}
+                  />
+                </div>
+                {word && (
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 bg-white px-2 py-1 rounded-md shadow-lg border-2 pointer-events-none z-20" style={{ borderColor: '#B8621B' }}>
+                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: '#6B5335' }}>{word}</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 rounded-full opacity-0 group-active:opacity-60 transition-opacity pointer-events-none" style={{ backgroundColor: '#FFD7B5' }}></div>
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

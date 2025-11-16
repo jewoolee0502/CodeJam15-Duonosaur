@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { GameBoard } from './components/GameBoard';
 import { ScoreBoard } from './components/ScoreBoard';
 import { Button } from './components/ui/button';
-import { Pause, Play, RotateCcw } from 'lucide-react';
+import { Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { StartMenu } from './components/StartMenu';
 import { JumpGame } from './components/JumpGame';
 import { DunolingoGame } from './components/DunolingoGame';
 import { ChatLearning } from './components/ChatLearning';
+import dinoImage from "./assets/dinosaur_running_improved.gif";
+
 
 interface DinoExercise {
   english_word: string;
@@ -43,6 +45,51 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState('start');
   const [dunolingoExercises, setDunolingoExercises] = useState<DinoExercise[]>([]);
   const [isLoadingDunolingo, setIsLoadingDunolingo] = useState(false);
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+
+  interface MoleExcercise {
+    exercise: string,
+    words: string[],
+    answer: string,
+    explanation: string
+  }
+
+  // exercises loaded from backend (used for the whole game session)
+  const [exercises, setExercises] = useState<MoleExcercise[]>([]);
+  const [loadingExercises, setLoadingExercises] = useState(false);
+  const [exercisesError, setExercisesError] = useState<string | null>(null);
+
+  // Load exercises once from backend. On failure try dummy endpoint as fallback.
+  const loadExercises = useCallback(async () => {
+    setLoadingExercises(true);
+    setExercisesError(null);
+    try {
+      let res = await fetch('http://127.0.0.1:8000/mole/generate', { method: 'POST', headers: {
+        "Content-Type": "application/json",
+      } });
+      if (!res.ok) {
+        // fallback to dummy endpoint if primary fails
+        res = await fetch('http://127.0.0.1:8000/mole/generate_dummy', { method: 'POST', headers: {
+        "Content-Type": "application/json",
+       } });
+      }
+      const data = await res.json();
+      // backend may return either "exercise_list" or (in dummy) "exercice_list"
+      const list = data.exercise_list ?? data.exercice_list ?? [];
+      if (!Array.isArray(list) || list.length === 0) {
+        throw new Error('No exercises returned from server');
+      }
+      setExercises(list as MoleExcercise[]);
+      return list;
+    } catch (err: any) {
+      console.error('Failed to load exercises:', err);
+      setExercisesError(err?.message ?? 'Failed to load exercises');
+      setExercises([]);
+      throw err;
+    } finally {
+      setLoadingExercises(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (isPlaying && !isPaused && timeLeft > 0) {
@@ -104,6 +151,7 @@ export default function App() {
     setScore(0);
     setMissedClicks(0);
     setTimeLeft(30);
+    setCurrentExerciseIndex(0);
     setIsPlaying(true);
     setIsPaused(false);
     setCurrentScreen('game');
@@ -119,8 +167,10 @@ export default function App() {
     if (isPlaying && !isPaused) {
       if (hit) {
         setScore(prev => prev + 1);
+        // setDebugLog('Whack: HIT');
       } else {
         setMissedClicks(prev => prev + 1);
+        // setDebugLog('Whack: MISS');
       }
     }
   }, [isPlaying, isPaused]);
@@ -132,7 +182,14 @@ export default function App() {
 
   const handleGameSelect = async (game: 'whack-a-mole' | 'jump' | 'dunolingo' | 'chat-learning') => {
     if (game === 'whack-a-mole') {
-      startGame();
+      try {
+        setCurrentScreen('loading');
+        await loadExercises();
+        startGame();
+      } catch (err) {
+        // keep user on start screen and show error — they can retry
+        setCurrentScreen('start');
+      }
     } else if (game === 'jump') {
       setCurrentScreen('jump');
     } else if (game === 'dunolingo') {
@@ -147,6 +204,13 @@ export default function App() {
     }
   };
 
+  const handleAdvanceExercise = useCallback((correct: boolean) => {
+    console.debug('App: handleAdvanceExercise correct=', correct);
+    // setDebugLog(`advance: ${correct ? 'correct' : 'incorrect'}`);
+    // Advance to next exercise
+    setCurrentExerciseIndex(prev => (exercises.length > 0 ? (prev + 1) % exercises.length : prev + 1));
+  }, [exercises.length]);
+ 
   const handleBackToMenu = () => {
     // Stop any active speech recognition before going back to menu
     try {
@@ -167,16 +231,111 @@ export default function App() {
     setIsPlaying(false);
     setIsPaused(false);
     setTimeLeft(30);
+    setExercises([]);
   };
-
+ 
   if (currentScreen === 'menu') {
     return <StartMenu onSelectGame={handleGameSelect} />;
   }
-
+ 
   if (currentScreen === 'start') {
     return <StartMenu onSelectGame={handleGameSelect} />;
   }
 
+
+            {loadingExercises && <div className="text-sm" style={{ color: '#8B6F47' }}>Loading...</div>}
+          {exercisesError && <div className="text-sm text-red-600">Loading Fails: {exercisesError}</div>}
+  if (currentScreen === 'loading') {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ backgroundColor: (currentScreen === 'loading') ? "#F5E5C7" : "rgba(0, 0, 0, 0.1)" }}>
+              <div
+                className="bg-white rounded-3xl p-8 text-center border-4 shadow-2xl"
+                style={{ borderColor: "#B8621B" }}
+              >
+                <img
+                  src={dinoImage}
+                  alt="Dinosaur"
+                  className="w-24 h-24 object-contain mx-auto mb-4"
+                />
+                <h2
+                  className="text-2xl mb-2"
+                  style={{ color: "#B8621B" }}
+                >
+                  Whack-A-Mole
+                </h2>
+                {(currentScreen === 'loading') ? (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#8B6F47" }}
+                    >
+                      Loading dino exercises...
+                    </p>
+                    <div className="flex justify-center mb-4">
+                      <Loader2 
+                        className="w-8 h-8" 
+                        style={{ 
+                          color: "#B8621B",
+                          animation: "spin 1s linear infinite"
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : exercises.length > 0 ? (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#8B6F47" }}
+                    >
+                      "Whack" the error in the sentence!
+                    </p>
+                    <button
+                      onClick={startGame}
+                      className="px-6 py-3 rounded-xl border-2 flex items-center gap-2 mx-auto hover:bg-white transition-colors"
+                      style={{
+                        borderColor: "#B8621B",
+                        color: "#B8621B",
+                        backgroundColor: "#FFD7B5",
+                      }}
+                    >
+                      <Play className="w-5 h-5" />
+                      Start Game
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#EF4444" }}
+                    >
+                      Failed to load dino exercises. Please try again.
+                    </p>
+                    <button
+                      onClick={handleBackToMenu}
+                      className="px-6 py-3 rounded-xl border-2 flex items-center gap-2 mx-auto hover:bg-white transition-colors"
+                      style={{
+                        borderColor: "#B8621B",
+                        color: "#B8621B",
+                        backgroundColor: "#FFD7B5",
+                      }}
+                    >
+                      Back to Menu
+                    </button>
+                  </>
+                )}
+                {highScore > 0 && !(currentScreen === 'loading') && exercises.length > 0 && (
+                  <p
+                    className="text-sm mt-4"
+                    style={{ color: "#8B6F47" }}
+                  >
+                    High Score: {highScore}
+                  </p>
+                )}
+              </div>
+            </div>
+    );
+  }
+ 
   if (currentScreen === 'jump') {
     return <JumpGame onBack={handleBackToMenu} />;
   }
@@ -192,11 +351,11 @@ export default function App() {
   if (currentScreen === 'dunolingo') {
     return <DunolingoGame onBack={handleBackToMenu} exercises={dunolingoExercises} isLoading={isLoadingDunolingo} onRefetch={refetchDunolingoExercises} />;
   }
-
+ 
   if (currentScreen === 'chat-learning') {
     return <ChatLearning onBack={handleBackToMenu} />;
   }
-
+ 
   return (
     <div className="h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#F5E5C7' }}>
       <div className="w-full max-w-4xl space-y-3">
@@ -213,11 +372,11 @@ export default function App() {
             <span>Back to Menu</span>
           </button>
         </div>
-        
+    
         {/* HIERARCHY: Title with clear game state */}
         <div className="text-center">
           <h1 className="tracking-tight text-4xl mb-1" style={{ color: '#B8621B' }}>
-            Whac-A-Mole
+            Whack-A-Mole
           </h1>
           {/* VISIBILITY: Clear system status */}
           <div className="flex items-center justify-center gap-2 min-h-[20px]">
@@ -241,7 +400,7 @@ export default function App() {
             )}
           </div>
         </div>
-        
+    
         {/* RECOGNITION: Stats always visible */}
         <ScoreBoard 
           score={score} 
@@ -256,8 +415,11 @@ export default function App() {
           <GameBoard 
             isPlaying={isPlaying && !isPaused} 
             onWhack={handleWhack}
+            exercises={exercises}
+            currentExerciseIndex={currentExerciseIndex}
+            onAdvanceExercise={handleAdvanceExercise}
           />
-          
+      
           {/* VISIBILITY: Pause overlay shows clear status */}
           {isPaused && (
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm rounded-xl flex items-center justify-center z-20">

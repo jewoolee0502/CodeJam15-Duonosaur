@@ -37,9 +37,9 @@ A Chrome-dino-style endless runner where players must **pronounce French words**
 
 ---
 
-### 2. Whac-a-mole
+### 2. Whack-a-mole
 
-**"Grammaire Smash!"** — A whac-a-mole style game where moles pop up displaying French sentences. Players must identify and whack moles showing **grammatically incorrect** sentences while avoiding the correct ones.
+**"Grammaire Smash!"** — A whack-a-mole style game where moles pop up displaying French sentences. Players must identify and whack moles showing **grammatically incorrect** sentences while avoiding the correct ones.
 
 #### Key Features
 

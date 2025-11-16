@@ -85,7 +85,7 @@ Generate 10 such exercises now, following all rules exactly."""
 @router.post("/mole/generate_dummy", response_model=MoleExerciseResponse)
 async def generate_dummy_grammar_exercises():
     dummy_response = {
-        "exercice_list": [
+        "exercise_list": [
             {
                 "exercise": "Il est aller à l'école.",
                 "words": ["Il", "est", "aller", "à", "l'école"],

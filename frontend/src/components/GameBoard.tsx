@@ -73,7 +73,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       const availableWords = words.filter(w => !hitWords.has(w));
       if (availableWords.length === 0) {
         // nothing left; try again later
-        popTimeoutRef.current = window.setTimeout(schedulePop, 2000);
+        popTimeoutRef.current = window.setTimeout(schedulePop, 1000);
         return;
       }
 
@@ -82,7 +82,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       let totalWeight = 0;
       const weights = availableWords.map(w => {
         const wNorm = normalize(w);
-        const weight = (targetNorm && wNorm === targetNorm) ? 1.5 : 1.0;
+        const weight = (targetNorm && wNorm === targetNorm) ? 1.9 : 1.0;
         totalWeight += weight;
         return weight;
       });
@@ -100,14 +100,14 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       const word = availableWords[chosenIndex];
       const holeIndex = wordHoleMap.get(word);
       if (holeIndex === undefined) {
-        popTimeoutRef.current = window.setTimeout(schedulePop, 1000);
+        popTimeoutRef.current = window.setTimeout(schedulePop, 1300);
         return;
       }
 
       setActiveMoles(new Map([[holeIndex, word]]));
 
       // Make mole visible much longer so gameplay is slower
-      const hideTime = 3000 + Math.random() * 1000; // 4000-5000ms
+      const hideTime = 1000 + Math.random() * 1000; // 1200-2200ms
 
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
@@ -118,7 +118,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
         hideTimeoutRef.current = null;
 
         // schedule next pop after a small randomized gap so pops are not synchronized
-        const gap = 800 + Math.random() * 1200; // 800-3000ms
+        const gap = 800 + Math.random() * 300; // 800-1100ms
         popTimeoutRef.current = window.setTimeout(schedulePop, gap);
       }, hideTime);
     };

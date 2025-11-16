@@ -30,7 +30,7 @@ async def generate_dino_exercises(request: DinoExerciseRequest):
     try:
         client = OpenAI(api_key=api_key)
         
-        prompt = f"""Generate a JSON object with 10 French vocabulary exercises about {request.theme}. Each exercise contains an English word, its correct French translation, and an incorrect French translation from the same semantic category but clearly distinguishable.
+        prompt = f"""Generate a JSON object with 50 French vocabulary exercises about {request.theme}. Each exercise contains an English word, its correct French translation, and an incorrect French translation from the same semantic category but clearly distinguishable.
 
 Rules:
 - Wrong translation must be thematically related (same category/domain) but NOT a valid alternative translation
@@ -41,7 +41,7 @@ Rules:
 Format:
 {{"exercice_list": [{{"english_word": "Computer","right_translation": "Ordinateur","wrong_translation": "Clavier"}}]}}
 
-Generate exactly 10 exercises following this structure. Return ONLY the JSON object, no additional text."""
+Generate exactly 50 exercises following this structure. Return ONLY the JSON object, no additional text."""
 
         response = client.chat.completions.create(
             model="gpt-4o",

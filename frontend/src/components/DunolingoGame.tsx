@@ -434,10 +434,7 @@ export function DunolingoGame({ onBack, exercises: propDinoExercises = [], isLoa
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.code === "ArrowUp") {
-        e.preventDefault();
-        jump();
-      } else if (e.code === "KeyP") {
+      if (e.code === "KeyP") {
         e.preventDefault();
         togglePause();
       }
@@ -446,7 +443,7 @@ export function DunolingoGame({ onBack, exercises: propDinoExercises = [], isLoa
     window.addEventListener("keydown", handleKeyPress);
     return () =>
       window.removeEventListener("keydown", handleKeyPress);
-  }, [gameState, isJumping]);
+  }, [gameState]);
 
   useEffect(() => {
     if (gameState !== "playing") return;
@@ -668,8 +665,7 @@ export function DunolingoGame({ onBack, exercises: propDinoExercises = [], isLoa
 
         <div
           ref={canvasRef}
-          onClick={jump}
-          className="relative border-4 rounded-2xl overflow-hidden cursor-pointer w-full mx-auto"
+          className="relative border-4 rounded-2xl overflow-hidden w-full mx-auto"
           style={{
             height: GAME_HEIGHT,
             backgroundColor: "#FFE8D6",

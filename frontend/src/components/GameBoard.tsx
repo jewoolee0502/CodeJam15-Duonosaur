@@ -82,7 +82,7 @@ export function GameBoard({ isPlaying, onWhack, exercises, currentExerciseIndex,
       let totalWeight = 0;
       const weights = availableWords.map(w => {
         const wNorm = normalize(w);
-        const weight = (targetNorm && wNorm === targetNorm) ? 1.3 : 1.0;
+        const weight = (targetNorm && wNorm === targetNorm) ? 1.5 : 1.0;
         totalWeight += weight;
         return weight;
       });

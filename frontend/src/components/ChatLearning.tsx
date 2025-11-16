@@ -31,6 +31,7 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
   ]);
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const nextId = useRef<number>(3); // id generator (initial messages use 1..2)
   
   // Speech recognition hook
   const {
@@ -78,48 +79,176 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
     }
   };
 
-  const handleSendMessage = () => {
+  // helper: call backend teach endpoint
+  const callTeachApi = async (messageText: string) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/teach/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageText }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`API error: ${res.status} ${text}`);
+      }
+      const data = await res.json();
+      return data as { response: string; translation?: string | null; audioText?: string | null };
+    } catch (err) {
+      console.error(err);
+      return { response: `Error contacting teacher: ${String(err)}` };
+    }
+  };
+
+  const getVoices = () =>
+    new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      const synth = window.speechSynthesis;
+      let voices = synth.getVoices();
+      if (voices.length) return resolve(voices);
+      const handler = () => {
+        voices = synth.getVoices();
+        synth.removeEventListener('voiceschanged', handler);
+        resolve(voices);
+      };
+      synth.addEventListener('voiceschanged', handler);
+      // fallback timeout in case event never fires
+      setTimeout(() => resolve(synth.getVoices()), 1000);
+    });
+
+  // 是否存在法语 TTS voice（用于禁用音频功能）
+  const [frenchTTSAvailable, setFrenchTTSAvailable] = useState<boolean>(true);
+
+  // 组件挂载时检查是否存在法语 voice；若不存在则禁用音频并记录日志
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) {
+      console.warn('Web Speech API not supported - TTS disabled');
+      setFrenchTTSAvailable(false);
+      return;
+    }
+    let mounted = true;
+    getVoices().then((voices) => {
+      if (!mounted) return;
+      const hasFrench = voices.some((v) => v.lang?.toLowerCase().startsWith('fr'));
+      if (!hasFrench) {
+        console.warn('No French TTS voices available - audio disabled');
+      } else {
+        console.log('French TTS voice available');
+      }
+      setFrenchTTSAvailable(hasFrench);
+    }).catch((e) => {
+      console.warn('Error fetching voices, disabling TTS', e);
+      setFrenchTTSAvailable(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  // 简单法语检测：检查法语特有字符或常见法语词汇（启发式，不保证 100% 准确）
+  const isFrench = (text?: string | null) => {
+    if (!text) return false;
+    const t = text.toLowerCase();
+    // 常见带重音的法语字符
+    const frenchCharRe = /[éèêëàâîïôöùûçœæ]/i;
+    if (frenchCharRe.test(text)) return true;
+    // 常见法语词汇启发式匹配
+    const commonFrenchWords = ['bonjour', 'merci', 'au revoir', 'comment', 'ça', "s'il", 'oui', 'non', 'monsieur', 'madame'];
+    return commonFrenchWords.some((w) => t.includes(w));
+  };
+
+  const playAudio = async (text?: string | null) => {
+    if (!text) return;
+    // 仅播放被检测为法语的文本
+    if (!isFrench(text)) {
+      console.warn('Audio not played: text not detected as French.');
+      return;
+    }
+    // 如果没有法语 TTS voice，则禁用播放
+    if (!frenchTTSAvailable) {
+      console.warn('Audio not played: no French TTS voice available.');
+      return;
+    }
+    // browser TTS
+    if ('speechSynthesis' in window) {
+      try {
+        const voices = await getVoices();
+        // prefer French voices
+        const voice =
+          voices.find((v) => v.lang?.toLowerCase().startsWith('fr')) ||
+          voices.find((v) => v.lang === 'fr-FR') ||
+          voices[0];
+
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'fr-FR';
+        if (voice) utter.voice = voice;
+        utter.rate = 0.95; // 慢一点更清晰
+        utter.pitch = 1;
+        utter.volume = 1;
+
+        utter.onstart = () => {
+          // 可在此更新 UI（例如显示正在播放）
+        };
+        utter.onend = () => {
+          // 可在此更新 UI（例如关闭播放指示器）
+        };
+        utter.onerror = (e) => {
+          console.warn('TTS error', e);
+        };
+
+        window.speechSynthesis.cancel(); // 取消当前播放，确保最新文本播放
+        window.speechSynthesis.speak(utter);
+        return;
+      } catch (e) {
+        console.warn('TTS failed, falling back to server audio', e);
+      }
+    } else {
+      console.warn('Web Speech API not supported in this browser');
+    }
+  };
+  
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
-    const newUserMessage: Message = {
-      id: messages.length + 1,
+    const userMessage: Message = {
+      id: nextId.current++,
       text: inputValue,
       sender: 'user',
     };
 
-    setMessages((prev) => [...prev, newUserMessage]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: messages.length + 2,
-        text: "Great effort! Keep practicing. Try another phrase!",
-        sender: 'ai',
-      };
-      setMessages((prev) => [...prev, aiResponse]);
-    }, 1000);
-
+    setMessages((prev) => [...prev, userMessage]);
     setInputValue('');
+
+    // call backend
+    const data = await callTeachApi(userMessage.text);
+
+    const aiMessage: Message = {
+      id: nextId.current++,
+      text: data.response ?? 'No response',
+      sender: 'ai',
+      translation: data.translation ?? undefined,
+      // 只有后端返回的 audioText 被检测为法语时才保留，否则不提供音频
+      audioText: isFrench(data.audioText) ? (data.audioText as string) : undefined,
+    };
+
+    setMessages((prev) => [...prev, aiMessage]);
   };
 
-  const handlePracticeWord = (word: { french: string; english: string }) => {
-    const newUserMessage: Message = {
-      id: messages.length + 1,
+  const handlePracticeWord = async (word: { french: string; english: string }) => {
+    const userMessage: Message = {
+      id: nextId.current++,
       text: word.french,
       sender: 'user',
     };
+    setMessages((prev) => [...prev, userMessage]);
 
-    setMessages((prev) => [...prev, newUserMessage]);
+    const data = await callTeachApi(word.french);
 
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: messages.length + 2,
-        text: `Excellent! "${word.french}" means "${word.english}". Try saying it out loud!`,
-        sender: 'ai',
-        audioText: word.french,
-      };
-      setMessages((prev) => [...prev, aiResponse]);
-    }, 800);
+    const aiMessage: Message = {
+      id: nextId.current++,
+      text: data.response ?? `Excellent! "${word.french}" means "${word.english}".`,
+      sender: 'ai',
+      translation: data.translation ?? `\"${word.french}\" = \"${word.english}\"`,
+      // 优先使用后端提供且被检测为法语的 audioText，否则使用本地的法语短语
+      audioText: isFrench(data.audioText) ? (data.audioText as string) : word.french,
+    };
+    setMessages((prev) => [...prev, aiMessage]);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -166,13 +295,11 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
               {message.translation && (
                 <p className="text-xs sm:text-sm mt-2 opacity-80">{message.translation}</p>
               )}
-              {message.audioText && (
+              {/* 仅当 audioText 存在且被检测为法语时显示播放按钮 */}
+              {message.audioText && isFrench(message.audioText) && frenchTTSAvailable && (
                 <button
                   className="mt-2 flex items-center gap-1 text-xs sm:text-sm opacity-80 hover:opacity-100"
-                  onClick={() => {
-                    // Audio playback would go here
-                    console.log('Play audio:', message.audioText);
-                  }}
+                  onClick={() => playAudio(message.audioText)}
                 >
                   <Volume2 className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Listen</span>

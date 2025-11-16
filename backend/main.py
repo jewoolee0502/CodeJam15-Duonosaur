@@ -19,21 +19,6 @@ app.add_middleware(
 app.include_router(dino_router)
 app.include_router(mole_router)
 app.include_router(teach_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.get("/")

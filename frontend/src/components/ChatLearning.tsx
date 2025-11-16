@@ -133,7 +133,7 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
       } else {
         console.log('French TTS voice available');
       }
-      setFrenchTTSAvailable(hasFrench);
+      setFrenchTTSAvailable(false);
     }).catch((e) => {
       console.warn('Error fetching voices, disabling TTS', e);
       setFrenchTTSAvailable(false);
@@ -149,7 +149,7 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
     const frenchCharRe = /[éèêëàâîïôöùûçœæ]/i;
     if (frenchCharRe.test(text)) return true;
     // 常见法语词汇启发式匹配
-    const commonFrenchWords = ['bonjour', 'merci', 'au revoir', 'comment', 'ça', "s'il", 'oui', 'non', 'monsieur', 'madame'];
+    const commonFrenchWords = ['bonjour', 'merci', 'De rien', 'au revoir', 'comment', 'ça', "s'il", 'oui', 'non', 'monsieur', 'madame'];
     return commonFrenchWords.some((w) => t.includes(w));
   };
 
@@ -299,7 +299,7 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
               {message.audioText && isFrench(message.audioText) && frenchTTSAvailable && (
                 <button
                   className="mt-2 flex items-center gap-1 text-xs sm:text-sm opacity-80 hover:opacity-100"
-                  onClick={() => playAudio(message.audioText)}
+                  onClick={() => playAudio(message.text)}
                 >
                   <Volume2 className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Listen</span>

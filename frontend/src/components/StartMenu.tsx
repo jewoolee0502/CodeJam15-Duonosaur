@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gamepad2, Settings, HelpCircle, ArrowUp, Hammer, X, Volume2, VolumeX, MessageCircle } from 'lucide-react';
+import { Gamepad2, Settings, HelpCircle, Hammer, X, Volume2, VolumeX, MessageCircle } from 'lucide-react';
 import dinoImage from '../assets/dinosaur_reading.gif';
 
 interface StartMenuProps {
@@ -65,21 +65,6 @@ export function StartMenu({ onSelectGame }: StartMenuProps) {
             <div className="text-left">
               <h3 className="text-base sm:text-lg" style={{ color: '#B8621B' }}>Dinolingo</h3>
               <p className="text-xs sm:text-sm" style={{ color: '#8B6F47' }}>Classic endless runner - jump to survive</p>
-            </div>
-          </button>
-
-          {/* Jump Game */}
-          <button
-            onClick={() => onSelectGame('jump')}
-            className="w-full bg-white rounded-2xl p-4 border-2 flex items-center gap-3 hover:scale-105 transition-transform shadow-lg"
-            style={{ borderColor: '#B8621B' }}
-          >
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFD7B5' }}>
-              <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#B8621B' }} />
-            </div>
-            <div className="text-left">
-              <h3 className="text-base sm:text-lg" style={{ color: '#B8621B' }}>Jump Game</h3>
-              <p className="text-xs sm:text-sm" style={{ color: '#8B6F47' }}>Jump over obstacles and reach new heights</p>
             </div>
           </button>
 

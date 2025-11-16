@@ -42,6 +42,9 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const gameLoopRef = useRef<number>();
   const canvasRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const lastJumpedWordRef = useRef<string>(''); // Track last word that triggered jump to prevent duplicate jumps
+  const shouldBeListeningRef = useRef(false); // Track if we want to be listening
+  const isStartingRef = useRef(false); // Track if we're currently trying to start
 
   const GRAVITY = 0.6;
   const JUMP_STRENGTH = -12;
@@ -103,65 +106,171 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = "fr-FR";
-      recognitionRef.current.maxAlternatives = 3;
+      recognitionRef.current.maxAlternatives = 1; // Reduce to 1 for faster processing
+
+      // Pre-compute normalized answers for faster matching
+      const correctAnswerLower = correctAnswer.toLowerCase().trim();
+      const wrongAnswerLower = wrongAnswer.toLowerCase().trim();
+      const correctAnswerMinLength = Math.max(3, Math.floor(correctAnswerLower.length * 0.6)); // Check when 60% of word is spoken
 
       recognitionRef.current.onresult = (event: any) => {
-        const current = event.resultIndex;
-        const result = event.results[current][0];
-        const transcript = result.transcript
-          .toLowerCase()
-          .trim();
+        // Process all results immediately, prioritizing speed
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i][0];
+          const isFinal = event.results[i].isFinal;
+          
+          // Extremely low confidence threshold for fastest detection - accept any result
+          const confidenceThreshold = isFinal ? 0.01 : 0.0;
+          
+          if (result.confidence > confidenceThreshold) {
+            // Fast normalization - minimal processing
+            const transcript = result.transcript
+              .toLowerCase()
+              .replace(/[.,!?;:\s]+/g, ' ') // Remove punctuation and normalize spaces in one pass
+              .trim();
+            
+            setSpokenText(transcript);
+            console.log("You said:", transcript, isFinal ? "(final)" : "(interim)", "confidence:", result.confidence);
 
-        if (result.confidence > 0.3) {
-          setSpokenText(transcript);
-          console.log("You said:", transcript);
-
-          if (
-            correctWords.some((word) =>
-              transcript.includes(word),
-            )
-          ) {
-            setWordState("correct");
-            setVoiceFeedback("✓ Correct!");
-            jump();
-            setTimeout(() => {
-              setVoiceFeedback("");
-              setWordState("neutral");
-            }, 1500);
-          } else if (
-            wrongWords.some((word) => transcript.includes(word))
-          ) {
-            setWordState("wrong");
-            setVoiceFeedback("✗ Wrong word!");
-            setTimeout(() => {
-              setVoiceFeedback("");
-              setWordState("neutral");
-            }, 1500);
+            // Fast word extraction
+            const words = transcript.split(/\s+/).filter(w => w.length > 0);
+            
+            // Check for exact match first (fastest path)
+            let matchedWord = null;
+            for (const word of words) {
+              if (word === correctAnswerLower) {
+                matchedWord = word;
+                break;
+              }
+            }
+            
+            // If exact match found, jump immediately
+            if (matchedWord && matchedWord !== lastJumpedWordRef.current) {
+              lastJumpedWordRef.current = matchedWord;
+              
+              // Execute jump immediately using requestAnimationFrame for instant response
+              requestAnimationFrame(() => {
+                setWordState("correct");
+                setVoiceFeedback("✓ Correct!");
+                jump();
+              });
+              
+              // Reset feedback after delay (but jump already happened)
+              setTimeout(() => {
+                setVoiceFeedback("");
+                setWordState("neutral");
+                setTimeout(() => {
+                  lastJumpedWordRef.current = '';
+                }, 300);
+              }, 1000);
+              
+              // Skip processing other words once we found a match
+              continue;
+            }
+            
+            // Check for partial match on interim results for even faster detection
+            if (!isFinal && words.length > 0) {
+              const lastWord = words[words.length - 1];
+              // Check if the last word is a prefix of the correct answer (user is still speaking)
+              // This allows jumping when ~60% of the word is detected
+              if (lastWord.length >= correctAnswerMinLength && 
+                  correctAnswerLower.startsWith(lastWord) &&
+                  lastWord !== lastJumpedWordRef.current) {
+                // Very likely the correct word is being spoken - jump early for minimal latency
+                lastJumpedWordRef.current = lastWord;
+                
+                // Jump immediately without waiting
+                requestAnimationFrame(() => {
+                  setWordState("correct");
+                  setVoiceFeedback("✓ Correct!");
+                  jump();
+                });
+                
+                setTimeout(() => {
+                  setVoiceFeedback("");
+                  setWordState("neutral");
+                  setTimeout(() => {
+                    lastJumpedWordRef.current = '';
+                  }, 300);
+                }, 1000);
+                
+                continue;
+              }
+            }
+            
+            // Check for wrong answer only on final results
+            if (isFinal) {
+              const hasWrongAnswer = words.some(word => word === wrongAnswerLower);
+              if (hasWrongAnswer) {
+                setWordState("wrong");
+                setVoiceFeedback("✗ Wrong word!");
+                setTimeout(() => {
+                  setVoiceFeedback("");
+                  setWordState("neutral");
+                }, 1000);
+              }
+            }
           }
         }
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
+        isStartingRef.current = false; // Reset starting flag
+        
         if (event.error === "no-speech") {
-          recognitionRef.current.stop();
-          setTimeout(
-            () => isListening && recognitionRef.current.start(),
-            100,
-          );
-        } else {
+          // No speech detected - this is normal, let onend handle restart
+          return;
+        } else if (event.error === "aborted") {
+          // User stopped - this is fine
+          return;
+        } else if (event.error === "not-allowed") {
           setIsListening(false);
-          setVoiceFeedback("Error - try again");
-          setTimeout(() => setVoiceFeedback(""), 1500);
+          shouldBeListeningRef.current = false;
+          setVoiceFeedback("Microphone permission denied");
+          setTimeout(() => setVoiceFeedback(""), 2000);
+        } else {
+          // Other errors - try to restart if we should be listening
+          setIsListening(false);
+          setVoiceFeedback("Error - retrying...");
+          setTimeout(() => {
+            if (shouldBeListeningRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                console.error("Failed to restart after error:", e);
+                setVoiceFeedback("Error - try clicking Start Listening again");
+                setTimeout(() => setVoiceFeedback(""), 2000);
+              }
+            }
+          }, 500);
         }
       };
 
       recognitionRef.current.onend = () => {
-        if (isListening && gameState === "playing") {
-          setTimeout(() => recognitionRef.current.start(), 100);
+        isStartingRef.current = false; // Reset starting flag
+        
+        // Auto-restart if we should still be listening
+        if (shouldBeListeningRef.current && recognitionRef.current) {
+          setTimeout(() => {
+            if (shouldBeListeningRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                // Recognition might already be starting or stopped
+                console.log("Recognition restart skipped:", e);
+              }
+            }
+          }, 100);
         } else {
           setIsListening(false);
         }
+      };
+
+      recognitionRef.current.onstart = () => {
+        isStartingRef.current = false;
+        setIsListening(true);
+        setVoiceFeedback(""); // No message when listening starts
       };
 
       recognitionRef.current.onaudiostart = () =>
@@ -178,19 +287,57 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   }, [isListening, gameState]);
 
   const startListening = () => {
-    if (recognitionRef.current) {
+    if (!recognitionRef.current) {
+      setVoiceFeedback("Speech recognition not available");
+      setTimeout(() => setVoiceFeedback(""), 2000);
+      return;
+    }
+
+    // Prevent multiple simultaneous start attempts
+    if (isStartingRef.current || isListening) {
+      console.log("Already starting or listening");
+      return;
+    }
+
+    try {
+      shouldBeListeningRef.current = true;
+      isStartingRef.current = true;
       setSpokenText("");
-      setVoiceFeedback("Listening...");
+      setVoiceFeedback(""); // No message when starting
       setIsListening(true);
+      
       recognitionRef.current.start();
+    } catch (err: any) {
+      isStartingRef.current = false;
+      console.error("Error starting recognition:", err);
+      
+      if (err.message?.includes('already started') || err.name === 'InvalidStateError') {
+        // Already started - this is fine, just update state
+        shouldBeListeningRef.current = true;
+        setIsListening(true);
+        setVoiceFeedback(""); // No message when already started
+      } else {
+        shouldBeListeningRef.current = false;
+        setIsListening(false);
+        setVoiceFeedback("Failed to start - try again");
+        setTimeout(() => setVoiceFeedback(""), 2000);
+      }
     }
   };
 
   const stopListening = () => {
+    shouldBeListeningRef.current = false;
+    isStartingRef.current = false;
+    
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recognition:", e);
+      }
     }
+    setIsListening(false);
+    setVoiceFeedback("");
   };
 
   useEffect(() => {
@@ -511,7 +658,7 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
                   className="text-sm mb-4"
                   style={{ color: "#8B6F47" }}
                 >
-                  Press Space or click to jump over obstacles
+                  Say the correct word to jump over obstacles
                 </p>
                 <button
                   onClick={startGame}
@@ -625,9 +772,9 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
         <div className="mt-4 text-center">
           <p className="text-sm" style={{ color: "#8B6F47" }}>
             {gameState === "ready" &&
-              "Click or press Space to start"}
+              "Turn on your mic to jump"}
             {gameState === "playing" &&
-              "Space or Click to jump • P to pause"}
+              "Speak the correct word to jump"}
             {gameState === "paused" &&
               "Press P or click Resume to continue"}
             {gameState === "gameOver" &&

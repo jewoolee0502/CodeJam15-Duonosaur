@@ -19,7 +19,7 @@ async function fetchDinoExercises() {
     const response = await fetch("http://127.0.0.1:8000/dino/generate", 
       {
         method: "POST", 
-        body: JSON.stringify({theme: "general vocabulary"}),
+        body: JSON.stringify({theme: "food"}),
         headers: {
           "Content-Type": "application/json",
         },

@@ -6,16 +6,16 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
-class MoleExcercise(BaseModel):
+class MoleExercise(BaseModel):
     exercise: str
     words: list[str]
     answer: str
     explanation: str
 
-class MoleExcerciseResponse(BaseModel):
-    exercise_list: list[MoleExcercise]
+class MoleExerciseResponse(BaseModel):
+    exercise_list: list[MoleExercise]
 
-@router.post("/mole/generate", response_model=MoleExcerciseResponse)
+@router.post("/mole/generate", response_model=MoleExerciseResponse)
 async def generate_grammar_exercises():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -71,7 +71,7 @@ Generate 10 such exercises now, following all rules exactly."""
         response_text = response_text.strip()
             
         exercises_data = json.loads(response_text)
-        return MoleExcerciseResponse(**exercises_data)
+        return MoleExerciseResponse(**exercises_data)
     
     except json.JSONDecodeError:
         print(response_text)
@@ -82,7 +82,7 @@ Generate 10 such exercises now, following all rules exactly."""
         print(exercises_data)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
-@router.post("/mole/generate_dummy", response_model=MoleExcerciseResponse)
+@router.post("/mole/generate_dummy", response_model=MoleExerciseResponse)
 async def generate_dummy_grammar_exercises():
     dummy_response = {
         "exercice_list": [
@@ -148,4 +148,4 @@ async def generate_dummy_grammar_exercises():
             }
         ]
     }
-    return MoleExcerciseResponse(**dummy_response)
+    return MoleExerciseResponse(**dummy_response)

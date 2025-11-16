@@ -23,6 +23,24 @@ interface Obstacle {
 type GameState = "ready" | "playing" | "paused" | "gameOver";
 type WordState = "neutral" | "correct" | "wrong";
 
+interface Exercise {
+  english_word: string,
+  right_translation: string,
+  wrong_translation: string
+}
+
+async function fetchExercises() {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/dino/generate", {method: "POST", body: JSON.stringify({theme: "general vocalbulary"})});
+    const data = await response.json();
+    console.log("Fetched exercises data:", data);
+    return data as Exercise[];
+  } catch (error) {
+    console.error("Error fetching exercises:", error);
+    return [] as Exercise[];
+  }
+}
+
 export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const [gameState, setGameState] =
     useState<GameState>("ready");
@@ -63,6 +81,13 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const GAME_HEIGHT = 600;
   const DINO_X = 100;
 
+  let exerciseList: Exercise[] = []; 
+  fetchExercises().then(data => {
+    console.log("Fetched exercises:", data);
+    exerciseList = data;
+    return data;
+  });
+  console.log("Exercise List:", exerciseList);
   const correctAnswer = "Ordinateur";
   const wrongAnswer = "Clavier";
   const correctWords = ["ordinateur", "computer"];

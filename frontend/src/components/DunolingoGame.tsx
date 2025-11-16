@@ -31,10 +31,18 @@ interface Exercise {
 
 async function fetchExercises() {
   try {
-    const response = await fetch("http://127.0.0.1:8000/dino/generate", {method: "POST", body: JSON.stringify({theme: "general vocalbulary"})});
+    const response = await fetch("http://127.0.0.1:8000/dino/generate", 
+      {
+        method: "POST", 
+        body: JSON.stringify({theme: "general vocabulary"}),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
     const data = await response.json();
-    console.log("Fetched exercises data:", data);
-    return data as Exercise[];
+    // 后端返回 { "exercice_list": [...] }
+    return (data.exercice_list || []) as Exercise[];
   } catch (error) {
     console.error("Error fetching exercises:", error);
     return [] as Exercise[];
@@ -57,6 +65,10 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
     useState<WordState>("neutral");
 
   const velocityRef = useRef(0);
+  const exerciseListRef = useRef<Exercise[]>([]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  const exerciseIndexRef = useRef(0);
   const gameLoopRef = useRef<number>();
   const canvasRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -67,6 +79,24 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const hasJumpedForCurrentObstacleRef = useRef(false); // Track if we've already jumped for the current obstacle
   const gameStateRef = useRef<GameState>(gameState); // Track game state for use in speech recognition handler
   
+  // keep exerciseIndexRef in sync with state
+  useEffect(() => {
+    exerciseIndexRef.current = currentExerciseIndex;
+  }, [currentExerciseIndex]);
+
+  // fetch exercises once on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const data = await fetchExercises();
+      if (!mounted) return;
+      exerciseListRef.current = data;
+      setExercises(data);
+      setCurrentExerciseIndex(0);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // Keep gameStateRef in sync with gameState
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -80,18 +110,6 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const GAME_WIDTH = 800;
   const GAME_HEIGHT = 600;
   const DINO_X = 100;
-
-  let exerciseList: Exercise[] = []; 
-  fetchExercises().then(data => {
-    console.log("Fetched exercises:", data);
-    exerciseList = data;
-    return data;
-  });
-  console.log("Exercise List:", exerciseList);
-  const correctAnswer = "Ordinateur";
-  const wrongAnswer = "Clavier";
-  const correctWords = ["ordinateur", "computer"];
-  const wrongWords = ["clavier", "keyboard"];
 
   const createObstacle = () => {
     const obstacleType = Math.random();
@@ -164,11 +182,18 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
       recognitionRef.current.maxAlternatives = 1; // Reduce to 1 for faster processing
 
       // Pre-compute normalized answers for faster matching
-      const correctAnswerLower = correctAnswer.toLowerCase().trim();
-      const wrongAnswerLower = wrongAnswer.toLowerCase().trim();
-      const correctAnswerMinLength = Math.max(3, Math.floor(correctAnswerLower.length * 0.6)); // Check when 60% of word is spoken
+      // We'll compute current exercise values inside the onresult handler using refs so we always use the latest exercise.
 
       recognitionRef.current.onresult = (event: any) => {
+        const currExercise = exerciseListRef.current[exerciseIndexRef.current];
+        if (!currExercise) {
+          // No exercise loaded yet; ignore speech events
+          return;
+        }
+        const correctAnswerLower = (currExercise.right_translation || "").toLowerCase().trim();
+        const wrongAnswerLower = (currExercise.wrong_translation || "").toLowerCase().trim();
+        const correctAnswerMinLength = Math.max(3, Math.floor(correctAnswerLower.length * 0.6)); // Check when ~60% of word is spoken
+
         // Process all results immediately, prioritizing speed
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i][0];
@@ -494,12 +519,21 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
             
             // Reset pending state after successfully passing obstacle
             if (pendingCorrectWordRef.current && hasJumpedForCurrentObstacleRef.current) {
+              // advance to next exercise when user passed an obstacle using a correct spoken word
               pendingCorrectWordRef.current = false;
               hasJumpedForCurrentObstacleRef.current = false;
               lastJumpedWordRef.current = '';
               setWordState("neutral");
               setVoiceFeedback("");
+
+              if (exerciseListRef.current.length > 0) {
+                setCurrentExerciseIndex((prev) => {
+                  const nextIdx = (prev + 1) % exerciseListRef.current.length;
+                  return nextIdx;
+                });
+              }
             }
+
           }
 
           if (dinoRight > obsLeft && dinoLeft < obsRight) {
@@ -522,9 +556,6 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
         newObstacles = newObstacles.filter(
           (obs) => obs.x > -obs.width,
         );
-
-        // Obstacles are now generated when words are detected by the microphone
-        // (see recognitionRef.current.onresult handler)
 
         return newObstacles;
       });
@@ -639,7 +670,7 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
             className="absolute top-4 left-1/2 transform -translate-x-1/2 text-3xl px-6 py-2 rounded-xl bg-white/90 border-2"
             style={{ color: "#B8621B", borderColor: "#B8621B" }}
           >
-            Computer
+            {exercises[currentExerciseIndex]?.english_word ?? (exerciseListRef.current[exerciseIndexRef.current]?.english_word ?? "Loading...")}
           </div>
 
           <div
@@ -662,13 +693,13 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
               className="text-2xl px-6 py-3 rounded-xl border-2 transition-all duration-300"
               style={getWordStyle(true)}
             >
-              {correctAnswer}
+              {exercises[currentExerciseIndex]?.right_translation ?? (exerciseListRef.current[exerciseIndexRef.current]?.right_translation ?? "Ordinateur")}
             </div>
             <div
               className="text-2xl px-6 py-3 rounded-xl border-2 transition-all duration-300"
               style={getWordStyle(false)}
             >
-              {wrongAnswer}
+              {exercises[currentExerciseIndex]?.wrong_translation ?? (exerciseListRef.current[exerciseIndexRef.current]?.wrong_translation ?? "Clavier")}
             </div>
           </div>
 

@@ -178,7 +178,7 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   }, [isListening, gameState]);
 
   const startListening = () => {
-    if (recognitionRef.current && gameState === "playing") {
+    if (recognitionRef.current) {
       setSpokenText("");
       setVoiceFeedback("Listening...");
       setIsListening(true);

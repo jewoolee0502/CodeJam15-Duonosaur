@@ -1,5 +1,5 @@
+import React, { useState } from 'react';
 import { Gamepad2, Settings, HelpCircle, ArrowUp, Hammer, X, Volume2, VolumeX, MessageCircle } from 'lucide-react';
-import { useState } from 'react';
 import dinoImage from '../assets/dinosaur_reading.gif';
 
 interface StartMenuProps {
@@ -43,7 +43,7 @@ export function StartMenu({ onSelectGame }: StartMenuProps) {
 
         {/* Title */}
         <h1 className="text-3xl sm:text-4xl md:text-5xl tracking-wider mb-2 text-center" style={{ color: '#B8621B', letterSpacing: '0.15em' }}>
-          DUNOSAUR
+          DUONOSAUR
         </h1>
         
         {/* Subtitle */}

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Volume2 } from 'lucide-react';
+import { ArrowLeft, Send, Volume2, Mic } from 'lucide-react';
 import dinoImage from 'figma:asset/3a519b4fad679bec0e5a1851cb49a7ecc7330095.png';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 
 interface ChatLearningProps {
   onBack: () => void;
@@ -30,6 +31,20 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
   ]);
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Speech recognition hook
+  const {
+    transcript,
+    isListening,
+    isSupported: isSpeechSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition({
+    lang: 'fr-FR', // French language for learning
+    continuous: false,
+    interimResults: true,
+  });
 
   const practiceWords = [
     { french: 'Bonjour', english: 'Hello' },
@@ -45,6 +60,23 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Update input when speech transcript changes
+  useEffect(() => {
+    if (transcript) {
+      setInputValue(transcript);
+    }
+  }, [transcript]);
+
+  const handleSpeechToggle = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      resetTranscript();
+      setInputValue('');
+      startListening();
+    }
+  };
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return;
@@ -181,13 +213,27 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type a message or click a phrase above..."
+            placeholder={isListening ? "Listening..." : "Type a message or click a phrase above..."}
             className="flex-1 px-3 py-2 sm:px-4 sm:py-3 rounded-xl border-2 text-sm sm:text-base focus:outline-none focus:ring-2 transition-all"
             style={{
-              borderColor: '#FFD7B5',
+              borderColor: isListening ? '#22C55E' : '#FFD7B5',
               color: '#B8621B',
             }}
           />
+          {isSpeechSupported && (
+            <button
+              onClick={handleSpeechToggle}
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity flex-shrink-0 ${
+                isListening ? 'animate-pulse' : ''
+              }`}
+              style={{
+                backgroundColor: isListening ? '#22C55E' : '#B8621B',
+              }}
+              title={isListening ? 'Stop listening' : 'Start voice input'}
+            >
+              <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </button>
+          )}
           <button
             onClick={handleSendMessage}
             className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity flex-shrink-0"
@@ -196,6 +242,11 @@ export function ChatLearning({ onBack }: ChatLearningProps) {
             <Send className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </button>
         </div>
+        {isListening && (
+          <div className="mt-2 text-xs text-center" style={{ color: '#22C55E' }}>
+            🎤 Listening... Speak now!
+          </div>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,31 @@ import { JumpGame } from './components/JumpGame';
 import { DunolingoGame } from './components/DunolingoGame';
 import { ChatLearning } from './components/ChatLearning';
 
+interface Exercise {
+  english_word: string;
+  right_translation: string;
+  wrong_translation: string;
+}
+
+async function fetchExercises() {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/dino/generate", 
+      {
+        method: "POST", 
+        body: JSON.stringify({theme: "general vocabulary"}),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const data = await response.json();
+    return (data.exercice_list || []) as Exercise[];
+  } catch (error) {
+    console.error("Error fetching exercises:", error);
+    return [] as Exercise[];
+  }
+}
+
 export default function App() {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
@@ -16,6 +41,8 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [missedClicks, setMissedClicks] = useState(0);
   const [currentScreen, setCurrentScreen] = useState('start');
+  const [dunolingoExercises, setDunolingoExercises] = useState<Exercise[]>([]);
+  const [isLoadingDunolingo, setIsLoadingDunolingo] = useState(false);
 
   useEffect(() => {
     if (isPlaying && !isPaused && timeLeft > 0) {
@@ -62,13 +89,18 @@ export default function App() {
     ? Math.round((score / (score + missedClicks)) * 100) 
     : 0;
 
-  const handleGameSelect = (game: 'whack-a-mole' | 'jump' | 'dunolingo' | 'chat-learning') => {
+  const handleGameSelect = async (game: 'whack-a-mole' | 'jump' | 'dunolingo' | 'chat-learning') => {
     if (game === 'whack-a-mole') {
       startGame();
     } else if (game === 'jump') {
       setCurrentScreen('jump');
     } else if (game === 'dunolingo') {
+      setIsLoadingDunolingo(true);
+      setDunolingoExercises([]);
       setCurrentScreen('dunolingo');
+      const exercises = await fetchExercises();
+      setDunolingoExercises(exercises);
+      setIsLoadingDunolingo(false);
     } else if (game === 'chat-learning') {
       setCurrentScreen('chat-learning');
     }
@@ -94,7 +126,7 @@ export default function App() {
   }
 
   if (currentScreen === 'dunolingo') {
-    return <DunolingoGame onBack={handleBackToMenu} />;
+    return <DunolingoGame onBack={handleBackToMenu} exercises={dunolingoExercises} isLoading={isLoadingDunolingo} />;
   }
 
   if (currentScreen === 'chat-learning') {

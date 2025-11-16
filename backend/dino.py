@@ -46,7 +46,7 @@ Generate exactly 50 exercises following this structure. Return ONLY the JSON obj
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1200
+            max_tokens=4000
         )
         response_text = response.choices[0].message.content.strip()
         
@@ -62,8 +62,10 @@ Generate exactly 50 exercises following this structure. Return ONLY the JSON obj
         return DinoExerciseResponse(**exercises_data)
         
     except json.JSONDecodeError as e:
+        print("Received invalid JSON from AI:", response_text)
         raise HTTPException(status_code=500, detail=f"Invalid JSON from AI: {str(e)}")
     except Exception as e:
+        print("Error generating exercises:", str(e))
         raise HTTPException(status_code=500, detail=f"Error generating exercises: {str(e)}")
     
     

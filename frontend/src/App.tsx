@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { GameBoard } from './components/GameBoard';
 import { ScoreBoard } from './components/ScoreBoard';
 import { Button } from './components/ui/button';
-import { Pause, Play, RotateCcw } from 'lucide-react';
+import { Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { StartMenu } from './components/StartMenu';
 import { JumpGame } from './components/JumpGame';
 import { DunolingoGame } from './components/DunolingoGame';
 import { ChatLearning } from './components/ChatLearning';
+import dinoImage from "./assets/dinosaur_running_improved.gif";
+
 
 interface DinoExercise {
   english_word: string;
@@ -240,21 +242,97 @@ export default function App() {
     return <StartMenu onSelectGame={handleGameSelect} />;
   }
 
+
+            {loadingExercises && <div className="text-sm" style={{ color: '#8B6F47' }}>Loading...</div>}
+          {exercisesError && <div className="text-sm text-red-600">Loading Fails: {exercisesError}</div>}
   if (currentScreen === 'loading') {
     return (
-      <div className="h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#F5E5C7' }}>
-        <div className="w-full max-w-2xl text-center space-y-4">
-          <h2 style={{ color: '#B8621B' }}>Loading exercises…</h2>
-          <p className="text-sm" style={{ color: '#8B6F47' }}>Please wait, loading exercises from the server.</p>
-          {loadingExercises && <div className="text-sm" style={{ color: '#8B6F47' }}>Loading...</div>}
-          {exercisesError && <div className="text-sm text-red-600">Loading Fails: {exercisesError}</div>}
-          <div className="pt-3">
-            <Button onClick={() => setCurrentScreen('start')} variant="outline" className="rounded-xl">
-              Back
-            </Button>
-          </div>
-        </div>
-      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ backgroundColor: (currentScreen === 'loading') ? "#F5E5C7" : "rgba(0, 0, 0, 0.1)" }}>
+              <div
+                className="bg-white rounded-3xl p-8 text-center border-4 shadow-2xl"
+                style={{ borderColor: "#B8621B" }}
+              >
+                <img
+                  src={dinoImage}
+                  alt="Dinosaur"
+                  className="w-24 h-24 object-contain mx-auto mb-4"
+                />
+                <h2
+                  className="text-2xl mb-2"
+                  style={{ color: "#B8621B" }}
+                >
+                  Whack-A-Mole
+                </h2>
+                {(currentScreen === 'loading') ? (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#8B6F47" }}
+                    >
+                      Loading dino exercises...
+                    </p>
+                    <div className="flex justify-center mb-4">
+                      <Loader2 
+                        className="w-8 h-8" 
+                        style={{ 
+                          color: "#B8621B",
+                          animation: "spin 1s linear infinite"
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : exercises.length > 0 ? (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#8B6F47" }}
+                    >
+                      "Whack" the error in the sentence!
+                    </p>
+                    <button
+                      onClick={startGame}
+                      className="px-6 py-3 rounded-xl border-2 flex items-center gap-2 mx-auto hover:bg-white transition-colors"
+                      style={{
+                        borderColor: "#B8621B",
+                        color: "#B8621B",
+                        backgroundColor: "#FFD7B5",
+                      }}
+                    >
+                      <Play className="w-5 h-5" />
+                      Start Game
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p
+                      className="text-sm mb-4"
+                      style={{ color: "#EF4444" }}
+                    >
+                      Failed to load dino exercises. Please try again.
+                    </p>
+                    <button
+                      onClick={handleBackToMenu}
+                      className="px-6 py-3 rounded-xl border-2 flex items-center gap-2 mx-auto hover:bg-white transition-colors"
+                      style={{
+                        borderColor: "#B8621B",
+                        color: "#B8621B",
+                        backgroundColor: "#FFD7B5",
+                      }}
+                    >
+                      Back to Menu
+                    </button>
+                  </>
+                )}
+                {highScore > 0 && !(currentScreen === 'loading') && exercises.length > 0 && (
+                  <p
+                    className="text-sm mt-4"
+                    style={{ color: "#8B6F47" }}
+                  >
+                    High Score: {highScore}
+                  </p>
+                )}
+              </div>
+            </div>
     );
   }
  

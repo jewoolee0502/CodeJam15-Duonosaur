@@ -3,7 +3,7 @@ import json
 from typing import Optional
 from fastapi import HTTPException, APIRouter
 from pydantic import BaseModel
-import openai
+from openai import OpenAI
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ async def generate_dino_exercises(request: DinoExerciseRequest):
         raise HTTPException(status_code=500, detail="API key not configured")
     
     try:
-        openai.api_key = api_key
+        client = OpenAI(api_key=api_key)
         
         prompt = f"""Generate a JSON object with 10 French vocabulary exercises about {request.theme}. Each exercise contains an English word, its correct French translation, and an incorrect French translation from the same semantic category but clearly distinguishable.
 
@@ -43,12 +43,12 @@ Format:
 
 Generate exactly 10 exercises following this structure. Return ONLY the JSON object, no additional text."""
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1200
         )
-        
-        response_text = response['choices'][0]['message']['content'].strip()
+        response_text = response.choices[0].message.content.strip()
         
         if response_text.startswith("```json"):
             response_text = response_text[7:]

@@ -365,6 +365,13 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
     setVoiceFeedback("");
   };
 
+  // Stop microphone immediately when game is over
+  useEffect(() => {
+    if (gameState === "gameOver") {
+      stopListening();
+    }
+  }, [gameState]);
+
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp") {

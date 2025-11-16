@@ -12,8 +12,9 @@ import dinoImage from "../assets/dinosaur_running_improved.gif";
 
 interface DunolingoGameProps {
   onBack: () => void;
-  exercises?: Exercise[];
+  exercises?: DinoExercise[];
   isLoading?: boolean;
+  onRefetch?: () => Promise<void>;
 }
 
 interface Obstacle {
@@ -26,13 +27,13 @@ interface Obstacle {
 type GameState = "ready" | "playing" | "paused" | "gameOver";
 type WordState = "neutral" | "correct" | "wrong";
 
-interface Exercise {
+interface DinoExercise {
   english_word: string,
   right_translation: string,
   wrong_translation: string
 }
 
-export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading = false }: DunolingoGameProps) {
+export function DunolingoGame({ onBack, exercises: propDinoExercises = [], isLoading = false, onRefetch }: DunolingoGameProps) {
   const [gameState, setGameState] =
     useState<GameState>("ready");
   const [score, setScore] = useState(0);
@@ -48,10 +49,11 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
     useState<WordState>("neutral");
 
   const velocityRef = useRef(0);
-  const exerciseListRef = useRef<Exercise[]>([]);
-  const [exercises, setExercises] = useState<Exercise[]>(propExercises);
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const exerciseIndexRef = useRef(0);
+  const dinoExerciseListRef = useRef<DinoExercise[]>([]);
+  const [dinoExercises, setDinoExercises] = useState<DinoExercise[]>(propDinoExercises);
+  const [currentDinoExerciseIndex, setCurrentDinoExerciseIndex] = useState(0);
+  const dinoExerciseIndexRef = useRef(0);
+  const [isCorrectAnswerOnLeft, setIsCorrectAnswerOnLeft] = useState(true);
   const gameLoopRef = useRef<number>();
   const canvasRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -62,19 +64,28 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
   const hasJumpedForCurrentObstacleRef = useRef(false); // Track if we've already jumped for the current obstacle
   const gameStateRef = useRef<GameState>(gameState); // Track game state for use in speech recognition handler
   
-  // keep exerciseIndexRef in sync with state
+  // Helper function to randomly assign correct answer position
+  const randomizeAnswerPosition = () => {
+    setIsCorrectAnswerOnLeft(Math.random() < 0.5);
+  };
+  
+  // keep dinoExerciseIndexRef in sync with state
   useEffect(() => {
-    exerciseIndexRef.current = currentExerciseIndex;
-  }, [currentExerciseIndex]);
+    dinoExerciseIndexRef.current = currentDinoExerciseIndex;
+    // Randomly assign correct answer position when exercise changes
+    randomizeAnswerPosition();
+  }, [currentDinoExerciseIndex]);
 
-  // Update exercises when propExercises changes
+  // Update dinoExercises when propDinoExercises changes
   useEffect(() => {
-    if (propExercises.length > 0) {
-      exerciseListRef.current = propExercises;
-      setExercises(propExercises);
-      setCurrentExerciseIndex(0);
+    if (propDinoExercises.length > 0) {
+      dinoExerciseListRef.current = propDinoExercises;
+      setDinoExercises(propDinoExercises);
+      setCurrentDinoExerciseIndex(0);
+      // Randomly assign correct answer position for first exercise
+      randomizeAnswerPosition();
     }
-  }, [propExercises]);
+  }, [propDinoExercises]);
 
   // Keep gameStateRef in sync with gameState
   useEffect(() => {
@@ -117,7 +128,25 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
     };
   };
 
-  const startGame = () => {
+  const startGame = async () => {
+    // If game is over and onRefetch is available, refetch dino exercises
+    if (gameState === "gameOver" && onRefetch) {
+      await onRefetch();
+      // Reset to ready state after refetching so user sees "Start Game" button with new data
+      setGameState("ready");
+      setScore(0);
+      setDinoY(0);
+      setIsJumping(false);
+      velocityRef.current = 0;
+      setGameSpeed(3);
+      setWordState("neutral");
+      pendingCorrectWordRef.current = false;
+      hasJumpedForCurrentObstacleRef.current = false;
+      setObstacles([]);
+      setCurrentDinoExerciseIndex(0);
+      randomizeAnswerPosition();
+      return;
+    }
     setGameState("playing");
     setScore(0);
     setDinoY(0);
@@ -128,6 +157,8 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
     pendingCorrectWordRef.current = false;
     hasJumpedForCurrentObstacleRef.current = false;
     setObstacles([]);
+    // Randomly assign correct answer position when starting game
+    randomizeAnswerPosition();
   };
 
   const jump = () => {
@@ -161,16 +192,16 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
       recognitionRef.current.maxAlternatives = 1; // Reduce to 1 for faster processing
 
       // Pre-compute normalized answers for faster matching
-      // We'll compute current exercise values inside the onresult handler using refs so we always use the latest exercise.
+      // We'll compute current dinoExercise values inside the onresult handler using refs so we always use the latest dinoExercise.
 
       recognitionRef.current.onresult = (event: any) => {
-        const currExercise = exerciseListRef.current[exerciseIndexRef.current];
-        if (!currExercise) {
-          // No exercise loaded yet; ignore speech events
+        const currDinoExercise = dinoExerciseListRef.current[dinoExerciseIndexRef.current];
+        if (!currDinoExercise) {
+          // No dinoExercise loaded yet; ignore speech events
           return;
         }
-        const correctAnswerLower = (currExercise.right_translation || "").toLowerCase().trim();
-        const wrongAnswerLower = (currExercise.wrong_translation || "").toLowerCase().trim();
+        const correctAnswerLower = (currDinoExercise.right_translation || "").toLowerCase().trim();
+        const wrongAnswerLower = (currDinoExercise.wrong_translation || "").toLowerCase().trim();
         const correctAnswerMinLength = Math.max(3, Math.floor(correctAnswerLower.length * 0.6)); // Check when ~60% of word is spoken
 
         // Process all results immediately, prioritizing speed
@@ -461,19 +492,19 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
             // Trigger jump at optimal timing (close to obstacle)
             hasJumpedForCurrentObstacleRef.current = true;
             jump();
-            setVoiceFeedback("✓ Jumping!");
+            // setVoiceFeedback("✓ Jumping!");
           } else if (distanceToObstacle < minJumpDistance && distanceToObstacle > 0) {
             // Very close but still ahead - jump immediately to avoid collision
             hasJumpedForCurrentObstacleRef.current = true;
             jump();
-            setVoiceFeedback("✓ Jumping!");
+            // setVoiceFeedback("✓ Jumping!");
           } else if (distanceToObstacle < 0) {
             // Obstacle already passed - reset state (word detected too late)
             pendingCorrectWordRef.current = false;
             hasJumpedForCurrentObstacleRef.current = false;
             lastJumpedWordRef.current = '';
             setWordState("neutral");
-            setVoiceFeedback("Too late - obstacle passed");
+            // setVoiceFeedback("Too late - obstacle passed");
             setTimeout(() => setVoiceFeedback(""), 1500);
           }
         }
@@ -498,16 +529,16 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
             
             // Reset pending state after successfully passing obstacle
             if (pendingCorrectWordRef.current && hasJumpedForCurrentObstacleRef.current) {
-              // advance to next exercise when user passed an obstacle using a correct spoken word
+              // advance to next dinoExercise when user passed an obstacle using a correct spoken word
               pendingCorrectWordRef.current = false;
               hasJumpedForCurrentObstacleRef.current = false;
               lastJumpedWordRef.current = '';
               setWordState("neutral");
               setVoiceFeedback("");
 
-              if (exerciseListRef.current.length > 0) {
-                setCurrentExerciseIndex((prev) => {
-                  const nextIdx = (prev + 1) % exerciseListRef.current.length;
+              if (dinoExerciseListRef.current.length > 0) {
+                setCurrentDinoExerciseIndex((prev) => {
+                  const nextIdx = (prev + 1) % dinoExerciseListRef.current.length;
                   return nextIdx;
                 });
               }
@@ -651,7 +682,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
                 className="absolute top-4 left-1/2 transform -translate-x-1/2 text-3xl px-6 py-2 rounded-xl bg-white/90 border-2"
                 style={{ color: "#B8621B", borderColor: "#B8621B" }}
               >
-                {exercises[currentExerciseIndex]?.english_word ?? (exerciseListRef.current[exerciseIndexRef.current]?.english_word ?? "Loading...")}
+                {dinoExercises[currentDinoExerciseIndex]?.english_word ?? (dinoExerciseListRef.current[dinoExerciseIndexRef.current]?.english_word ?? "Loading...")}
               </div>
 
               <div
@@ -672,15 +703,19 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
               >
                 <div
                   className="text-2xl px-6 py-3 rounded-xl border-2 transition-all duration-300"
-                  style={getWordStyle(true)}
+                  style={getWordStyle(isCorrectAnswerOnLeft)}
                 >
-                  {exercises[currentExerciseIndex]?.right_translation ?? (exerciseListRef.current[exerciseIndexRef.current]?.right_translation ?? "Ordinateur")}
+                  {isCorrectAnswerOnLeft 
+                    ? (dinoExercises[currentDinoExerciseIndex]?.right_translation ?? (dinoExerciseListRef.current[dinoExerciseIndexRef.current]?.right_translation ?? "Ordinateur"))
+                    : (dinoExercises[currentDinoExerciseIndex]?.wrong_translation ?? (dinoExerciseListRef.current[dinoExerciseIndexRef.current]?.wrong_translation ?? "Clavier"))}
                 </div>
                 <div
                   className="text-2xl px-6 py-3 rounded-xl border-2 transition-all duration-300"
-                  style={getWordStyle(false)}
+                  style={getWordStyle(!isCorrectAnswerOnLeft)}
                 >
-                  {exercises[currentExerciseIndex]?.wrong_translation ?? (exerciseListRef.current[exerciseIndexRef.current]?.wrong_translation ?? "Clavier")}
+                  {!isCorrectAnswerOnLeft 
+                    ? (dinoExercises[currentDinoExerciseIndex]?.right_translation ?? (dinoExerciseListRef.current[dinoExerciseIndexRef.current]?.right_translation ?? "Ordinateur"))
+                    : (dinoExercises[currentDinoExerciseIndex]?.wrong_translation ?? (dinoExerciseListRef.current[dinoExerciseIndexRef.current]?.wrong_translation ?? "Clavier"))}
                 </div>
               </div>
             </>
@@ -743,7 +778,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
                       className="text-sm mb-4"
                       style={{ color: "#8B6F47" }}
                     >
-                      Loading exercises...
+                      Loading dino exercises...
                     </p>
                     <div className="flex justify-center mb-4">
                       <Loader2 
@@ -755,7 +790,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
                       />
                     </div>
                   </>
-                ) : exercises.length > 0 ? (
+                ) : dinoExercises.length > 0 ? (
                   <>
                     <p
                       className="text-sm mb-4"
@@ -782,7 +817,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
                       className="text-sm mb-4"
                       style={{ color: "#EF4444" }}
                     >
-                      Failed to load exercises. Please try again.
+                      Failed to load dino exercises. Please try again.
                     </p>
                     <button
                       onClick={onBack}
@@ -797,7 +832,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
                     </button>
                   </>
                 )}
-                {highScore > 0 && !isLoading && exercises.length > 0 && (
+                {highScore > 0 && !isLoading && dinoExercises.length > 0 && (
                   <p
                     className="text-sm mt-4"
                     style={{ color: "#8B6F47" }}
@@ -837,7 +872,7 @@ export function DunolingoGame({ onBack, exercises: propExercises = [], isLoading
             </div>
           )}
 
-          {gameState === "gameOver" && (
+          {gameState === "gameOver" && !isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
               <div
                 className="bg-white rounded-3xl p-8 text-center border-4 shadow-2xl"

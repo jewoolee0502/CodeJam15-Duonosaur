@@ -8,13 +8,13 @@ import { JumpGame } from './components/JumpGame';
 import { DunolingoGame } from './components/DunolingoGame';
 import { ChatLearning } from './components/ChatLearning';
 
-interface Exercise {
+interface DinoExercise {
   english_word: string;
   right_translation: string;
   wrong_translation: string;
 }
 
-async function fetchExercises() {
+async function fetchDinoExercises() {
   try {
     const response = await fetch("http://127.0.0.1:8000/dino/generate", 
       {
@@ -26,10 +26,10 @@ async function fetchExercises() {
       }
     );
     const data = await response.json();
-    return (data.exercice_list || []) as Exercise[];
+    return (data.exercice_list || []) as DinoExercise[];
   } catch (error) {
-    console.error("Error fetching exercises:", error);
-    return [] as Exercise[];
+    console.error("Error fetching dino exercises:", error);
+    return [] as DinoExercise[];
   }
 }
 
@@ -41,7 +41,7 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [missedClicks, setMissedClicks] = useState(0);
   const [currentScreen, setCurrentScreen] = useState('start');
-  const [dunolingoExercises, setDunolingoExercises] = useState<Exercise[]>([]);
+  const [dunolingoExercises, setDunolingoExercises] = useState<DinoExercise[]>([]);
   const [isLoadingDunolingo, setIsLoadingDunolingo] = useState(false);
 
   useEffect(() => {
@@ -98,8 +98,8 @@ export default function App() {
       setIsLoadingDunolingo(true);
       setDunolingoExercises([]);
       setCurrentScreen('dunolingo');
-      const exercises = await fetchExercises();
-      setDunolingoExercises(exercises);
+      const dinoExercises = await fetchDinoExercises();
+      setDunolingoExercises(dinoExercises);
       setIsLoadingDunolingo(false);
     } else if (game === 'chat-learning') {
       setCurrentScreen('chat-learning');
@@ -125,8 +125,16 @@ export default function App() {
     return <JumpGame onBack={handleBackToMenu} />;
   }
 
+  const refetchDunolingoExercises = async () => {
+    setIsLoadingDunolingo(true);
+    setDunolingoExercises([]);
+    const dinoExercises = await fetchDinoExercises();
+    setDunolingoExercises(dinoExercises);
+    setIsLoadingDunolingo(false);
+  };
+
   if (currentScreen === 'dunolingo') {
-    return <DunolingoGame onBack={handleBackToMenu} exercises={dunolingoExercises} isLoading={isLoadingDunolingo} />;
+    return <DunolingoGame onBack={handleBackToMenu} exercises={dunolingoExercises} isLoading={isLoadingDunolingo} onRefetch={refetchDunolingoExercises} />;
   }
 
   if (currentScreen === 'chat-learning') {

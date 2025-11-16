@@ -158,9 +158,9 @@ export default function App() {
       <div className="h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#F5E5C7' }}>
         <div className="w-full max-w-2xl text-center space-y-4">
           <h2 style={{ color: '#B8621B' }}>Loading exercises…</h2>
-          <p className="text-sm" style={{ color: '#8B6F47' }}>请稍候，正在从服务器获取练习。</p>
-          {loadingExercises && <div className="text-sm" style={{ color: '#8B6F47' }}>加载中…</div>}
-          {exercisesError && <div className="text-sm text-red-600">加载失败: {exercisesError}</div>}
+          <p className="text-sm" style={{ color: '#8B6F47' }}>Please wait, loading exercises from the server.</p>
+          {loadingExercises && <div className="text-sm" style={{ color: '#8B6F47' }}>Loading...</div>}
+          {exercisesError && <div className="text-sm text-red-600">Loading Fails: {exercisesError}</div>}
           <div className="pt-3">
             <Button onClick={() => setCurrentScreen('start')} variant="outline" className="rounded-xl">
               Back

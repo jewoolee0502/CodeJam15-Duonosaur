@@ -16,6 +16,23 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [missedClicks, setMissedClicks] = useState(0);
   const [currentScreen, setCurrentScreen] = useState('start');
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+
+  // Sample exercises (replace or extend as needed)
+  const exercises = [
+    {
+      id: 0,
+      sentence: "J'aimes les pommes",
+      mistake: 'aimes',
+      words: ["J'", 'aimes', 'les', 'pommes']
+    },
+    {
+      id: 1,
+      sentence: 'Je mange un banane',
+      mistake: 'mange',
+      words: ['Je', 'mange', 'un', 'banane']
+    }
+  ];
 
   useEffect(() => {
     if (isPlaying && !isPaused && timeLeft > 0) {
@@ -36,6 +53,7 @@ export default function App() {
     setScore(0);
     setMissedClicks(0);
     setTimeLeft(30);
+    setCurrentExerciseIndex(0);
     setIsPlaying(true);
     setIsPaused(false);
     setCurrentScreen('game');
@@ -73,6 +91,13 @@ export default function App() {
       setCurrentScreen('chat-learning');
     }
   };
+
+  const handleAdvanceExercise = useCallback((correct: boolean) => {
+    if (correct) {
+      setScore(prev => prev + 1);
+    }
+    setCurrentExerciseIndex(prev => (prev + 1) % exercises.length);
+  }, [exercises.length]);
 
   const handleBackToMenu = () => {
     setCurrentScreen('menu');
@@ -121,7 +146,7 @@ export default function App() {
         {/* HIERARCHY: Title with clear game state */}
         <div className="text-center">
           <h1 className="tracking-tight text-4xl mb-1" style={{ color: '#B8621B' }}>
-            Whac-A-Mole
+            Whack-A-Mole
           </h1>
           {/* VISIBILITY: Clear system status */}
           <div className="flex items-center justify-center gap-2 min-h-[20px]">
@@ -160,6 +185,9 @@ export default function App() {
           <GameBoard 
             isPlaying={isPlaying && !isPaused} 
             onWhack={handleWhack}
+            exercises={exercises}
+            currentExerciseIndex={currentExerciseIndex}
+            onAdvanceExercise={handleAdvanceExercise}
           />
           
           {/* VISIBILITY: Pause overlay shows clear status */}

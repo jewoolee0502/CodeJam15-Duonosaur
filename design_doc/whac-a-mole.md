@@ -1,4 +1,4 @@
-# Whac-a-Mole: “Grammaire Smash!”
+# Whack-a-Mole: “Grammaire Smash!”
 
 ### AI-Generated French Grammar Learning Mini-Game — Design Document (Markdown)
 

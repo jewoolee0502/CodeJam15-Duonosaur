@@ -40,7 +40,7 @@ export function StartMenu({ onSelectGame }: StartMenuProps) {
 
         {/* Title */}
         <h1 className="text-3xl sm:text-4xl md:text-5xl tracking-wider mb-2 text-center" style={{ color: '#B8621B', letterSpacing: '0.15em' }}>
-          DUNOSAUR
+          DUONOSAUR
         </h1>
         
         {/* Subtitle */}

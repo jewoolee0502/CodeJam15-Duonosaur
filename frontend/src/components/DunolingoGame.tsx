@@ -45,8 +45,16 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const lastJumpedWordRef = useRef<string>(''); // Track last word that triggered jump to prevent duplicate jumps
   const shouldBeListeningRef = useRef(false); // Track if we want to be listening
   const isStartingRef = useRef(false); // Track if we're currently trying to start
+  const pendingCorrectWordRef = useRef(false); // Track if we detected correct word but haven't jumped yet
+  const hasJumpedForCurrentObstacleRef = useRef(false); // Track if we've already jumped for the current obstacle
+  const gameStateRef = useRef<GameState>(gameState); // Track game state for use in speech recognition handler
+  
+  // Keep gameStateRef in sync with gameState
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
-  const GRAVITY = 0.6;
+  const GRAVITY = 0.45;
   const JUMP_STRENGTH = -12;
   const DINO_SIZE = 50;
   const GROUND_HEIGHT = 20;
@@ -60,6 +68,33 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
   const correctWords = ["ordinateur", "computer"];
   const wrongWords = ["clavier", "keyboard"];
 
+  const createObstacle = () => {
+    const obstacleType = Math.random();
+    let width, height;
+
+    if (obstacleType < 0.3) {
+      width = 20;
+      height = 50;
+    } else if (obstacleType < 0.6) {
+      width = 30;
+      height = 40;
+    } else {
+      width = 40;
+      height = 30;
+    }
+
+    // Spawn obstacles 500px away from the dinosaur
+    // Dinosaur is at DINO_X (100), so obstacles start at 100 + 500 = 600px
+    const spawnDistance = DINO_X + 300; // 600px from left edge
+
+    return {
+      x: spawnDistance,
+      width,
+      height,
+      passed: false,
+    };
+  };
+
   const startGame = () => {
     setGameState("playing");
     setScore(0);
@@ -68,14 +103,9 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
     velocityRef.current = 0;
     setGameSpeed(3);
     setWordState("neutral");
-    setObstacles([
-      {
-        x: GAME_WIDTH + 200,
-        width: 20,
-        height: 40,
-        passed: false,
-      },
-    ]);
+    pendingCorrectWordRef.current = false;
+    hasJumpedForCurrentObstacleRef.current = false;
+    setObstacles([]);
   };
 
   const jump = () => {
@@ -135,6 +165,14 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
             // Fast word extraction
             const words = transcript.split(/\s+/).filter(w => w.length > 0);
             
+            // Generate obstacle when any word is detected (only on final results to avoid duplicates)
+            if (isFinal && words.length > 0 && gameStateRef.current === "playing") {
+              // Create a new obstacle when a word is detected - no limit, infinite obstacles
+              setObstacles((prev) => {
+                return [...prev, createObstacle()];
+              });
+            }
+            
             // Check for exact match first (fastest path)
             let matchedWord = null;
             for (const word of words) {
@@ -144,25 +182,18 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
               }
             }
             
-            // If exact match found, jump immediately
+            // If exact match found, mark as pending and wait for optimal jump timing
             if (matchedWord && matchedWord !== lastJumpedWordRef.current) {
               lastJumpedWordRef.current = matchedWord;
               
-              // Execute jump immediately using requestAnimationFrame for instant response
+              // Set pending flag - jump will happen when obstacle is near
+              pendingCorrectWordRef.current = true;
+              hasJumpedForCurrentObstacleRef.current = false;
+              
               requestAnimationFrame(() => {
                 setWordState("correct");
-                setVoiceFeedback("✓ Correct!");
-                jump();
+                // setVoiceFeedback("✓ Correct! Waiting for obstacle...");
               });
-              
-              // Reset feedback after delay (but jump already happened)
-              setTimeout(() => {
-                setVoiceFeedback("");
-                setWordState("neutral");
-                setTimeout(() => {
-                  lastJumpedWordRef.current = '';
-                }, 300);
-              }, 1000);
               
               // Skip processing other words once we found a match
               continue;
@@ -176,23 +207,17 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
               if (lastWord.length >= correctAnswerMinLength && 
                   correctAnswerLower.startsWith(lastWord) &&
                   lastWord !== lastJumpedWordRef.current) {
-                // Very likely the correct word is being spoken - jump early for minimal latency
+                // Very likely the correct word is being spoken - mark as pending
                 lastJumpedWordRef.current = lastWord;
                 
-                // Jump immediately without waiting
+                // Set pending flag - jump will happen when obstacle is near
+                pendingCorrectWordRef.current = true;
+                hasJumpedForCurrentObstacleRef.current = false;
+                
                 requestAnimationFrame(() => {
                   setWordState("correct");
-                  setVoiceFeedback("✓ Correct!");
-                  jump();
+                  // setVoiceFeedback("✓ Correct! Waiting for obstacle...");
                 });
-                
-                setTimeout(() => {
-                  setVoiceFeedback("");
-                  setWordState("neutral");
-                  setTimeout(() => {
-                    lastJumpedWordRef.current = '';
-                  }, 300);
-                }, 1000);
                 
                 continue;
               }
@@ -203,7 +228,7 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
               const hasWrongAnswer = words.some(word => word === wrongAnswerLower);
               if (hasWrongAnswer) {
                 setWordState("wrong");
-                setVoiceFeedback("✗ Wrong word!");
+                // setVoiceFeedback("✗ Wrong word!");
                 setTimeout(() => {
                   setVoiceFeedback("");
                   setWordState("neutral");
@@ -380,6 +405,43 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
         }));
         let newScore = score;
 
+        // Find the nearest unpased obstacle
+        const nearestObstacle = newObstacles
+          .filter(obs => !obs.passed)
+          .sort((a, b) => a.x - b.x)[0];
+
+        // Check if we have a pending correct word and should jump
+        if (pendingCorrectWordRef.current && nearestObstacle && !hasJumpedForCurrentObstacleRef.current && dinoY === 0) {
+          const dinoRight = DINO_X + DINO_SIZE;
+          const obsLeft = nearestObstacle.x;
+          const distanceToObstacle = obsLeft - dinoRight;
+          
+          // Optimal jump distance: when obstacle is 20-50 pixels away
+          // Jump closer for more exciting gameplay
+          const maxJumpDistance = 50;
+          const minJumpDistance = 20;
+          
+          if (distanceToObstacle <= maxJumpDistance && distanceToObstacle >= minJumpDistance) {
+            // Trigger jump at optimal timing (close to obstacle)
+            hasJumpedForCurrentObstacleRef.current = true;
+            jump();
+            setVoiceFeedback("✓ Jumping!");
+          } else if (distanceToObstacle < minJumpDistance && distanceToObstacle > 0) {
+            // Very close but still ahead - jump immediately to avoid collision
+            hasJumpedForCurrentObstacleRef.current = true;
+            jump();
+            setVoiceFeedback("✓ Jumping!");
+          } else if (distanceToObstacle < 0) {
+            // Obstacle already passed - reset state (word detected too late)
+            pendingCorrectWordRef.current = false;
+            hasJumpedForCurrentObstacleRef.current = false;
+            lastJumpedWordRef.current = '';
+            setWordState("neutral");
+            setVoiceFeedback("Too late - obstacle passed");
+            setTimeout(() => setVoiceFeedback(""), 1500);
+          }
+        }
+
         newObstacles.forEach((obs) => {
           const dinoLeft = DINO_X;
           const dinoRight = DINO_X + DINO_SIZE;
@@ -397,6 +459,15 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
           if (!obs.passed && dinoRight > obsRight) {
             obs.passed = true;
             newScore++;
+            
+            // Reset pending state after successfully passing obstacle
+            if (pendingCorrectWordRef.current && hasJumpedForCurrentObstacleRef.current) {
+              pendingCorrectWordRef.current = false;
+              hasJumpedForCurrentObstacleRef.current = false;
+              lastJumpedWordRef.current = '';
+              setWordState("neutral");
+              setVoiceFeedback("");
+            }
           }
 
           if (dinoRight > obsLeft && dinoLeft < obsRight) {
@@ -420,42 +491,8 @@ export function DunolingoGame({ onBack }: DunolingoGameProps) {
           (obs) => obs.x > -obs.width,
         );
 
-        if (
-          newObstacles.length === 0 ||
-          newObstacles[newObstacles.length - 1].x <
-            GAME_WIDTH - 300
-        ) {
-          const minGap = 250;
-          const maxGap = 400;
-          const gap =
-            Math.random() * (maxGap - minGap) + minGap;
-
-          const lastObsX =
-            newObstacles.length > 0
-              ? newObstacles[newObstacles.length - 1].x
-              : GAME_WIDTH;
-
-          const obstacleType = Math.random();
-          let width, height;
-
-          if (obstacleType < 0.3) {
-            width = 20;
-            height = 50;
-          } else if (obstacleType < 0.6) {
-            width = 30;
-            height = 40;
-          } else {
-            width = 40;
-            height = 30;
-          }
-
-          newObstacles.push({
-            x: lastObsX + gap,
-            width,
-            height,
-            passed: false,
-          });
-        }
+        // Obstacles are now generated when words are detected by the microphone
+        // (see recognitionRef.current.onresult handler)
 
         return newObstacles;
       });

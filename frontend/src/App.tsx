@@ -8,6 +8,31 @@ import { JumpGame } from './components/JumpGame';
 import { DunolingoGame } from './components/DunolingoGame';
 import { ChatLearning } from './components/ChatLearning';
 
+interface DinoExercise {
+  english_word: string;
+  right_translation: string;
+  wrong_translation: string;
+}
+
+async function fetchDinoExercises() {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/dino/generate", 
+      {
+        method: "POST", 
+        body: JSON.stringify({theme: "food"}),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const data = await response.json();
+    return (data.exercice_list || []) as DinoExercise[];
+  } catch (error) {
+    console.error("Error fetching dino exercises:", error);
+    return [] as DinoExercise[];
+  }
+}
+
 export default function App() {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
@@ -16,6 +41,8 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [missedClicks, setMissedClicks] = useState(0);
   const [currentScreen, setCurrentScreen] = useState('start');
+  const [dunolingoExercises, setDunolingoExercises] = useState<DinoExercise[]>([]);
+  const [isLoadingDunolingo, setIsLoadingDunolingo] = useState(false);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
 
   interface MoleExcercise {
@@ -77,6 +104,47 @@ export default function App() {
     }
   }, [timeLeft, isPlaying, isPaused, score, highScore]);
 
+  // Stop microphone when on main page
+  useEffect(() => {
+    if (currentScreen === 'start' || currentScreen === 'menu') {
+      // Stop any active speech recognition
+      try {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          // Create a temporary recognition instance and stop it
+          // This helps ensure any lingering recognition state is cleared
+          try {
+            const tempRecognition = new SpeechRecognition();
+            tempRecognition.abort(); // Use abort instead of stop for more aggressive cleanup
+          } catch (e) {
+            // Ignore errors - recognition might not be active or already stopped
+          }
+        }
+      } catch (error) {
+        // Silently handle any errors
+      }
+
+      // Stop any active audio media tracks by accessing the global media stream
+      // Note: This is a best-effort approach since we can't directly access
+      // other components' media streams, but components should clean up on unmount
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        // Try to get the current stream and stop it
+        // This will only work if there's an active stream we can access
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            // Immediately stop all tracks in the stream we just got
+            stream.getTracks().forEach(track => {
+              track.stop();
+            });
+          })
+          .catch(() => {
+            // No active stream or permission denied - this is expected and fine
+            // The microphone is already off or not accessible
+          });
+      }
+    }
+  }, [currentScreen]);
+
   const startGame = useCallback(() => {
     setScore(0);
     setMissedClicks(0);
@@ -110,7 +178,6 @@ export default function App() {
     ? Math.round((score / (score + missedClicks)) * 100) 
     : 0;
 
-  // When user selects the whack game, load exercises once and then start the game.
   const handleGameSelect = async (game: 'whack-a-mole' | 'jump' | 'dunolingo' | 'chat-learning') => {
     if (game === 'whack-a-mole') {
       try {
@@ -124,7 +191,12 @@ export default function App() {
     } else if (game === 'jump') {
       setCurrentScreen('jump');
     } else if (game === 'dunolingo') {
+      setIsLoadingDunolingo(true);
+      setDunolingoExercises([]);
       setCurrentScreen('dunolingo');
+      const dinoExercises = await fetchDinoExercises();
+      setDunolingoExercises(dinoExercises);
+      setIsLoadingDunolingo(false);
     } else if (game === 'chat-learning') {
       setCurrentScreen('chat-learning');
     }
@@ -138,6 +210,21 @@ export default function App() {
   }, [exercises.length]);
  
   const handleBackToMenu = () => {
+    // Stop any active speech recognition before going back to menu
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        try {
+          const tempRecognition = new SpeechRecognition();
+          tempRecognition.abort();
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+    
     setCurrentScreen('menu');
     setIsPlaying(false);
     setIsPaused(false);
@@ -174,9 +261,17 @@ export default function App() {
   if (currentScreen === 'jump') {
     return <JumpGame onBack={handleBackToMenu} />;
   }
- 
+
+  const refetchDunolingoExercises = async () => {
+    setIsLoadingDunolingo(true);
+    setDunolingoExercises([]);
+    const dinoExercises = await fetchDinoExercises();
+    setDunolingoExercises(dinoExercises);
+    setIsLoadingDunolingo(false);
+  };
+
   if (currentScreen === 'dunolingo') {
-    return <DunolingoGame onBack={handleBackToMenu} />;
+    return <DunolingoGame onBack={handleBackToMenu} exercises={dunolingoExercises} isLoading={isLoadingDunolingo} onRefetch={refetchDunolingoExercises} />;
   }
  
   if (currentScreen === 'chat-learning') {
